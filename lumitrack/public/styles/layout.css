@@ -1,0 +1,99 @@
+#stage {
+  position: relative;
+  height: 100vh;
+  height: 100dvh;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: env(safe-area-inset-top, 0) env(safe-area-inset-right, 0)
+    env(safe-area-inset-bottom, 0) env(safe-area-inset-left, 0);
+}
+
+#ambient {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: radial-gradient(circle at 18% 82%, rgba(var(--glow), 0.35), transparent 55%),
+    radial-gradient(circle at 85% 15%, rgba(var(--glow), 0.18), transparent 60%), var(--bg);
+  transition: background 1.4s ease;
+}
+
+#grain {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  opacity: 0.035;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+#bars-wrap {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: clamp(1px, 0.25vw, 4px);
+  padding: 0 clamp(8px, 1.2vw, 18px) 0;
+}
+
+.bar {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 3px;
+  border-radius: 2px 2px 0 0;
+  background: linear-gradient(180deg, var(--accent-2) 0%, var(--accent) 55%, rgba(var(--glow), 0.25) 100%);
+  transform-origin: bottom;
+  transition: height 70ms linear;
+  box-shadow: 0 0 14px rgba(var(--glow), 0.35);
+}
+
+#now-playing {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: clamp(20px, 4vw, 40px);
+  padding-bottom: clamp(28px, 5vh, 48px);
+  width: 100%;
+}
+
+#cover {
+  width: clamp(56px, 8vw, 88px);
+  height: clamp(56px, 8vw, 88px);
+  border-radius: 10px;
+  object-fit: cover;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+  background: #1a1a1e;
+  flex-shrink: 0;
+}
+
+#meta {
+  min-width: 0;
+  flex: 0 1 auto;
+  width: max-content;
+  max-width: clamp(160px, 28vw, 360px);
+}
+
+#track-title {
+  font-size: clamp(1.1rem, 2.4vw, 1.6rem);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 0 0 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#track-artist {
+  font-size: clamp(0.85rem, 1.6vw, 1rem);
+  font-weight: 400;
+  color: var(--fg-dim);
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

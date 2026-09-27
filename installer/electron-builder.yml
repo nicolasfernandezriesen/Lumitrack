@@ -1,0 +1,50 @@
+appId: app.lumitrack.desktop
+productName: Lumitrack
+copyright: Uso personal. No comercial.
+
+directories:
+  output: ../installer/dist
+  buildResources: ../installer/build
+
+files:
+  - "**/*"
+  - "!bin/**"
+  - "!start.js"
+  - "!Lumitrack.bat"
+  - "!**/*.md"
+  - "!**/*.map"
+  - "!node_modules/@biomejs/**"
+
+asar: true
+asarUnpack:
+  - public/**
+
+extraResources:
+  - from: bin
+    to: bin
+    filter:
+      - yt-dlp.exe
+      - yt-dlp
+      - ffmpeg.exe
+      - ffmpeg
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  artifactName: Lumitrack-Setup-${version}.${ext}
+
+nsis:
+  oneClick: false
+  deleteAppDataOnUninstall: true
+  # Instalación para la máquina: la ruta por defecto es
+  # C:\Program Files\Lumitrack (en Windows en español se ve como Archivos de programa).
+  perMachine: true
+  allowToChangeInstallationDirectory: true
+  allowElevation: true
+  include: installer.nsh
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Lumitrack
+  uninstallDisplayName: Lumitrack

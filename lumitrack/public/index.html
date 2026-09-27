@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lumitrack — Visualizador audiorreactivo</title>
+
+<link rel="stylesheet" href="styles/theme.css">
+<link rel="stylesheet" href="styles/layout.css">
+<link rel="stylesheet" href="styles/player-controls.css">
+<link rel="stylesheet" href="styles/panel.css">
+<link rel="stylesheet" href="styles/components.css">
+</head>
+<body>
+
+<div id="stage">
+  <div id="ambient"></div>
+  <div id="grain"></div>
+  <div id="bars-wrap"></div>
+
+  <div id="now-playing">
+    <img id="cover" alt="">
+    <div id="meta">
+      <p id="track-title">Nada sonando todavía</p>
+      <p id="track-artist">Buscá una canción para empezar</p>
+    </div>
+
+    <button id="play-toggle" type="button" title="Reproducir" aria-label="Reproducir">▶</button>
+
+    <div id="progress-track">
+      <div id="progress-track-hit">
+        <div id="progress-fill"></div>
+      </div>
+    </div>
+
+    <span id="time-remaining">-0:00</span>
+
+    <div id="volume-control" class="volume-control">
+      <button id="volume-toggle" type="button" title="Mostrar control de volumen"
+        aria-label="Mostrar control de volumen" aria-expanded="false">🔊</button>
+      <div id="volume-popover" class="volume-popover" hidden>
+        <input id="volume-slider" type="range" min="0" max="100" value="100"
+          aria-label="Volumen" orient="vertical">
+        <button id="mute-toggle" type="button" title="Silenciar" aria-label="Silenciar">🔇</button>
+      </div>
+    </div>
+
+    <button id="fullscreen-toggle" type="button" title="Pantalla completa"
+      aria-label="Pantalla completa" aria-pressed="false"></button>
+  </div>
+</div>
+
+<button id="toggle-panel" title="Mostrar/ocultar panel">⚙</button>
+
+<div id="panel">
+  <h2>BUSCAR EN YOUTUBE</h2>
+  <input id="search-input" type="text" placeholder="Buscar canción o artista…">
+  <p id="search-status"></p>
+  <div id="results-list"></div>
+</div>
+
+<div id="loading-indicator"><span class="spinner"></span><span>Cargando audio…</span></div>
+<div id="status">Beta V.0.1.0</div>
+
+<script type="module" src="scripts/main.js"></script>
+</body>
+</html>

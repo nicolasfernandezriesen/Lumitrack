@@ -1,0 +1,55 @@
+# Dependencias
+node_modules/
+
+# Binarios que la app descarga en desarrollo (yt-dlp, ffmpeg)
+lumitrack/bin/
+
+# Salida del instalador. Se buildea y se publica por GitHub Release.
+installer/dist/
+*.exe
+*.msi
+*.blockmap
+*.nsis.7z
+
+# Secretos y entorno local
+.env
+.env.*
+!.env.example
+
+# Logs, cachés y sistema
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm/
+coverage/
+.DS_Store
+Thumbs.db
+Desktop.ini
+ehthumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.code-workspace
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Configuración personal de IA y agentes
+.cursor/
+.cursorignore
+.cursorrules
+.claude/
+.codex/
+.continue/
+.windsurf/
+.aider*
+.gemini/
+.copilot/
+.agents/
+.agent/
+AGENTS.md
+CLAUDE.md
+.clinerules
