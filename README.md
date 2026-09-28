@@ -1,31 +1,11 @@
 # Lumitrack
 
 Visualizador de audio con barras de luz audiorrítmicas e iluminación dinámica
-según la portada de la canción. Buscás un tema por YouTube, se reproduce
-solo el audio (sin video), y el fondo/las barras toman los colores de la
+según la portada de la canción. Buscás un tema, se reproduce
+solo el audio, y el fondo/las barras toman los colores de la
 portada.
 
 Pensado para dejarlo de fondo en una PC o TV.
-
-## ⚠️ Antes de usarlo — léelo
-
-- Este proyecto es **de uso personal y no comercial**. Cada persona que lo
-  descarga lo corre **en su propia máquina**, contra su propia conexión.
-  No es un servicio hosteado ni algo pensado para que terceros se conecten
-  a una instancia tuya.
-- La **búsqueda usa `ytmusic-api`** (npm, solo en el proyecto) y la
-  **reproducción usa yt-dlp**, ambos por fuera de la API oficial de
-  YouTube. Esto está en una zona gris respecto a los Términos de
-  Servicio de YouTube (no está permitido explícitamente, pero es una
-  práctica extendida y tolerada de hecho para uso personal). **No
-  redistribuyas el audio.** La app mantiene en RAM (nunca en disco) la
-  última canción reproducida, para poder repetirla o saltar dentro de
-  ella sin volver a pedírsela a YouTube — esa caché se pierde apenas
-  cerrás la app (ver "Arquitectura" más abajo).
-- No se necesita ninguna API key ni cuenta de Google.
-- Si en algún momento pensás monetizar o publicar esto en una tienda de
-  apps, la situación legal cambia completamente y necesitás asesoramiento
-  legal real antes de hacerlo. Este README no es asesoramiento legal.
 
 ## Uso en Windows
 
