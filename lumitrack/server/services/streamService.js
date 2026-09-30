@@ -1,16 +1,22 @@
-// Streaming local con yt-dlp y caché RAM de un único audio.
+// Streaming local: URL directa ya resuelta, o yt-dlp si todavía no está. Caché RAM de un audio.
 
 import { spawn } from "node:child_process";
+import { Readable, Transform } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { ytDlpPath, ffmpegDir, hasLocalFfmpeg } from "../infrastructure/binaries.js";
 import * as audioCache from "../infrastructure/audioCache.js";
+import * as streamUrlCache from "../infrastructure/streamUrlCache.js";
+import { AUDIO_FORMAT, VIDEO_ID_RE, normalizeAudioContentType, watchUrl } from "../infrastructure/youtubeAudio.js";
+import * as directUrlService from "./directUrlService.js";
 
-const VIDEO_ID_RE = /^[a-zA-Z0-9_-]{11}$/;
 const CONTENT_TYPE = "audio/webm";
+const USER_AGENT =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 
 /** Descargas en curso: videoId → { promise, abort }. */
 const inflight = new Map();
 
-/** Sirve audio desde caché o mediante yt-dlp. */
+/** Sirve audio desde caché, desde una URL ya resuelta, o mediante yt-dlp. */
 export function streamAudio(videoId, req, res) {
   if (!VIDEO_ID_RE.test(videoId)) {
     res.status(400).json({ error: "videoId inválido" });
@@ -23,7 +29,34 @@ export function streamAudio(videoId, req, res) {
     return;
   }
 
-  streamFromYtDlp(videoId, res);
+  let clientGone = false;
+  let released = false;
+  const release = () => {
+    if (released) return;
+    released = true;
+    directUrlService.releaseDownload();
+  };
+
+  res.on("close", () => {
+    if (!res.writableEnded) clientGone = true;
+    release();
+  });
+
+  directUrlService.resolveForPlayback(videoId).then(async (entry) => {
+    if (clientGone || res.writableEnded || res.destroyed) return;
+
+    if (entry) {
+      const outcome = await proxyDirect(videoId, entry, req, res);
+      if (outcome !== "fallback" || clientGone || res.headersSent) return;
+    }
+
+    if (!clientGone && !res.headersSent) streamFromYtDlp(videoId, res);
+  }).catch((err) => {
+    console.error("No se pudo preparar el audio:", err);
+    if (!clientGone && !res.headersSent) {
+      res.status(500).json({ error: "No se pudo preparar el audio." });
+    }
+  });
 }
 
 /** Verdadero si el videoId ya está en el slot de caché en RAM. */
@@ -78,15 +111,110 @@ function serveFromCache({ buffer, contentType }, req, res) {
   res.end(buffer.subarray(chunkStart, chunkEnd + 1));
 }
 
+/** Reenvía el audio del CDN a medida que llega y lo cachea al completar. */
+async function proxyDirect(videoId, entry, req, res) {
+  abortInflightExcept(videoId);
+
+  const controller = new AbortController();
+  let clientAborted = false;
+  let settle = null;
+  const donePromise = new Promise((resolve) => {
+    settle = resolve;
+  });
+
+  const dropInflight = () => {
+    const current = inflight.get(videoId);
+    if (current && current.promise === donePromise) inflight.delete(videoId);
+  };
+
+  inflight.set(videoId, {
+    promise: donePromise,
+    abort: () => {
+      clientAborted = true;
+      controller.abort();
+    },
+  });
+
+  res.on("close", () => {
+    if (!res.writableEnded) {
+      clientAborted = true;
+      controller.abort();
+    }
+  });
+
+  let upstream;
+  try {
+    upstream = await fetch(entry.url, {
+      headers: {
+        "User-Agent": USER_AGENT,
+        Referer: "https://www.youtube.com/",
+        Origin: "https://www.youtube.com",
+      },
+      signal: controller.signal,
+      redirect: "follow",
+    });
+  } catch (err) {
+    dropInflight();
+    settle?.(false);
+    if (clientAborted || isAbortError(err)) return "aborted";
+    console.error("No se pudo conectar al CDN:", err.message);
+    streamUrlCache.remove(videoId);
+    return "fallback";
+  }
+
+  if (upstream.status !== 200 || !upstream.body) {
+    upstream.body?.cancel?.().catch(() => {});
+    dropInflight();
+    settle?.(false);
+    if (!clientAborted) streamUrlCache.remove(videoId);
+    return clientAborted ? "aborted" : "fallback";
+  }
+
+  const contentType = normalizeAudioContentType(upstream.headers.get("content-type")) || entry.contentType;
+  res.status(200);
+  res.setHeader("Content-Type", contentType);
+  res.setHeader("Cache-Control", "no-store");
+
+  const chunks = [];
+  const collect = new Transform({
+    transform(chunk, _encoding, callback) {
+      chunks.push(chunk);
+      callback(null, chunk);
+    },
+  });
+
+  let completed = false;
+  try {
+    await pipeline(Readable.fromWeb(upstream.body), collect, res);
+    completed = !clientAborted;
+  } catch (err) {
+    if (!clientAborted && !isAbortError(err) && err?.code !== "ERR_STREAM_PREMATURE_CLOSE") {
+      console.error("Error reenviando el audio:", err.message);
+    }
+  }
+
+  dropInflight();
+  if (completed && chunks.length > 0 && res.writableEnded) {
+    audioCache.set(videoId, Buffer.concat(chunks), contentType);
+    settle?.(true);
+    return "done";
+  }
+
+  settle?.(false);
+  if (!clientAborted && !res.headersSent && chunks.length === 0) {
+    streamUrlCache.remove(videoId);
+    return "fallback";
+  }
+  return "done";
+}
+
 /** Transmite yt-dlp y acumula chunks para cachearlos al finalizar. */
 function streamFromYtDlp(videoId, res) {
   abortInflightExcept(videoId);
 
-  const url = `https://www.youtube.com/watch?v=${videoId}`;
-
   const args = [
     "-f",
-    "bestaudio",
+    AUDIO_FORMAT,
     "-o",
     "-",
     "--no-playlist",
@@ -98,7 +226,7 @@ function streamFromYtDlp(videoId, res) {
     args.push("--ffmpeg-location", ffmpegDir());
   }
 
-  args.push(url);
+  args.push(watchUrl(videoId));
 
   const proc = spawn(ytDlpPath(), args, {
     stdio: ["ignore", "pipe", "pipe"],
@@ -145,8 +273,8 @@ function streamFromYtDlp(videoId, res) {
   });
 
   proc.on("close", (code) => {
-    const entry = inflight.get(videoId);
-    if (entry && entry.promise === donePromise) {
+    const current = inflight.get(videoId);
+    if (current && current.promise === donePromise) {
       inflight.delete(videoId);
     }
 
@@ -189,10 +317,15 @@ function abortInflightExcept(videoId) {
   }
 }
 
-/** Mata cualquier yt-dlp que siga bajando, por ejemplo al cerrar la ventana. */
+function isAbortError(err) {
+  return err?.name === "AbortError" || err?.code === "ABORT_ERR";
+}
+
+/** Mata cualquier descarga que siga en curso, por ejemplo al cerrar la ventana. */
 export function abortAllStreams() {
   for (const entry of inflight.values()) {
     entry.abort();
   }
   inflight.clear();
+  directUrlService.abortAll();
 }

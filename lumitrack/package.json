@@ -1,6 +1,6 @@
 {
   "name": "lumitrack",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Visualizador de audio en barras de luz con búsqueda por YouTube. Uso personal, no comercial.",
   "author": "Lumitrack",
   "type": "module",

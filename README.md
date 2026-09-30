@@ -106,9 +106,12 @@ Lumitrack/
     │   │   └── streamRoutes.js        (stream y estado de la caché)
     │   ├── services/
     │   │   ├── searchService.js       búsqueda en YouTube Music vía ytmusic-api
-    │   │   └── streamService.js       audio desde caché o yt-dlp
+    │   │   ├── directUrlService.js    resuelve la URL del CDN antes del clic
+    │   │   └── streamService.js       audio desde caché, CDN o yt-dlp
     │   └── infrastructure/
     │       ├── binaries.js            rutas a yt-dlp/ffmpeg
+    │       ├── youtubeAudio.js        formato y vencimiento de la URL directa
+    │       ├── streamUrlCache.js      URLs del CDN ya resueltas
     │       └── audioCache.js          caché en RAM de la última canción
     │
     └── public/
@@ -140,14 +143,16 @@ nada de Express.
   el paquete npm `ytmusic-api` (cliente Innertube no oficial, instalado
   solo en `node_modules` del proyecto). Devuelve título, artista,
   portada y duración de hasta 12 resultados, ya filtrados a canciones.
-- **Streaming de audio:** `GET /api/stream/:videoId` → si la canción
-  pedida es la que está cacheada en RAM (ver más abajo), se sirve el
-  buffer directo, con soporte de `Range` para saltar sin re-descargar.
-  Si no, yt-dlp extrae la pista de audio y la pipea en vivo a la
-  respuesta HTTP mientras en paralelo se van juntando los bytes; si la
-  descarga termina bien, esa canción queda cacheada para la próxima vez.
-  Si cerrás la canción antes de que termine, el proceso de yt-dlp se
-  mata automáticamente y no se cachea una descarga a medias.
+- **Streaming de audio:** al devolver una búsqueda, el servidor pide
+  en segundo plano (a lo sumo dos `yt-dlp` a la vez) la URL directa del
+  audio de cada resultado y la guarda hasta que vence. `GET /api/stream/:videoId`
+  sirve primero la canción cacheada en RAM (ver más abajo), con `Range`
+  para saltar sin re-descargar. Si no está, pero la URL ya se resolvió,
+  reenvía el audio del CDN a medida que llega. Si todavía no hay URL, o
+  el CDN la rechaza, yt-dlp extrae y pipea el audio como antes. En ambos
+  casos los bytes se juntan en paralelo y, si la descarga termina bien,
+  esa canción queda cacheada. Cambiar de canción corta la descarga en
+  curso; una descarga a medias no se cachea.
 - **Caché en RAM:** `infrastructure/audioCache.js` guarda un único slot
   en memoria del proceso — la última canción reproducida completa. Vive
   solo mientras la app está corriendo: no toca disco, y se pierde por

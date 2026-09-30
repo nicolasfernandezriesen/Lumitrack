@@ -214,23 +214,19 @@ export function createAudioEngine({ barCount, onError, onStateChange, onProgress
     seekableFromCache = false;
     stopCacheWatch();
 
-    let alreadyCached = false;
-    try {
-      alreadyCached = await isTrackCached(videoId);
-    } catch {
-      alreadyCached = false;
-    }
-    if (myToken !== loadToken) return;
+    const cacheCheck = isTrackCached(videoId).catch(() => false);
 
     audioEl.src = streamUrl(videoId);
-    if (alreadyCached) seekableFromCache = true;
 
     if (audioCtx.state === "suspended") await audioCtx.resume();
     const started = await safePlay();
+    if (myToken !== loadToken) return;
 
+    const alreadyCached = await cacheCheck;
     if (myToken !== loadToken) return;
 
     if (started) {
+      if (alreadyCached) seekableFromCache = true;
       visualLoop();
       setState(PlaybackState.PLAYING);
       if (!seekableFromCache) startCacheWatch(videoId, myToken);
