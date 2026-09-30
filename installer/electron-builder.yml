@@ -37,13 +37,19 @@ win:
 
 nsis:
   oneClick: false
-  deleteAppDataOnUninstall: true
+  # El borrado de datos de usuario lo decide installer.nsh. Por defecto
+  # se borra %APPDATA%\Lumitrack; el desinstalador puede conservarla.
+  # En una actualización (--updated) esa carpeta no se toca.
+  deleteAppDataOnUninstall: false
   # Instalación para la máquina: la ruta por defecto es
   # C:\Program Files\Lumitrack (en Windows en español se ve como Archivos de programa).
   perMachine: true
   allowToChangeInstallationDirectory: true
   allowElevation: true
   include: installer.nsh
+  # El asistente pregunta después de la ruta, por el escritorio y por
+  # el menú Inicio. Si el usuario desmarca una opción, installer.nsh
+  # borra ese acceso directo al terminar.
   createDesktopShortcut: true
   createStartMenuShortcut: true
   shortcutName: Lumitrack

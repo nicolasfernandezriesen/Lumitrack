@@ -42,14 +42,23 @@ Esa carpeta y el `.exe` no entran al repositorio: el instalador se
 publica como GitHub Release. Quien lo instala no necesita Node. La ruta por defecto es
 `C:\Program Files\Lumitrack` (en Windows en español, Archivos de programa).
 El asistente deja cambiarla —otro disco, por ejemplo `D:\`— y crea esa
-carpeta si todavía no existe. Hace falta permiso de administrador porque
-Program Files no es escribible para un usuario normal.
+carpeta si todavía no existe. Después pregunta si crear un icono de
+acceso directo en el escritorio y otro en el menú Inicio. Los dos
+casilleros vienen marcados: si se desmarca uno, ese acceso no se crea.
+Hace falta permiso
+de administrador porque Program Files no es escribible para un usuario
+normal.
 
 yt-dlp y ffmpeg van dentro del instalador y, al primer arranque, se copian
-a `%APPDATA%\Lumitrack\bin`. Eso sí es dato de usuario: Program Files no
-se puede actualizar sin administrador. Al desinstalar, esa carpeta
-(`%APPDATA%\Lumitrack`, binarios, caché de la ventana y cualquier dato
-local de la app) se borra.
+a `%APPDATA%\Lumitrack\bin`. Esa carpeta es la `userData` de Electron
+(AppData\Roaming\Lumitrack): binarios, caché de la ventana y, cuando
+existan, configuración y bases de datos locales. Program Files no se
+puede actualizar sin administrador, así que lo del usuario no va ahí.
+
+Al desinstalar se borra `%APPDATA%\Lumitrack` completo. El desinstalador
+pregunta antes si mantener la información personal; el casillero viene
+desmarcado. Si se marca, esa carpeta se conserva. Una actualización de
+la app no la borra.
 
 ## Uso en Mac / Linux
 
@@ -78,7 +87,7 @@ Lumitrack/
 ├── installer/                    → config del instalador (raíz del repo)
 │   ├── electron-builder.yml
 │   └── build/
-│       ├── installer.nsh         crea la carpeta de instalación si falta
+│       ├── installer.nsh         carpeta, acceso directo y datos de usuario
 │       └── icon.ico              (opcional)
 │
 └── lumitrack/                    → código de la app
@@ -214,6 +223,3 @@ La config vive en `installer/electron-builder.yml` y el setup generado
 en `installer/dist/`. Esa salida no se versiona: se publica como GitHub
 Release. El código no se mueve ahí: Electron necesita el `package.json`
 y `node_modules` de `lumitrack/`.
-
-Si más adelante hay un ícono, dejalo como `installer/build/icon.ico`.
-electron-builder lo toma solo, con ese nombre, desde la carpeta de build.

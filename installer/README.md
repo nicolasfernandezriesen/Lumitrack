@@ -22,14 +22,25 @@ como GitHub Release.
 Ese `.exe` instala la ventana de escritorio. No le pide Node a quien
 lo usa. La ruta por defecto es `C:\Program Files\Lumitrack`. En el
 asistente se puede cambiar (incluso a otro disco). Si esa carpeta no
-existe, el instalador la crea. La instalación pide permisos de
-administrador.
+existe, el instalador la crea. Después de la ruta pregunta si crear un
+icono de acceso directo en el escritorio y otro en el menú Inicio. Los
+dos casilleros vienen marcados. Si se desmarca uno, ese acceso no se
+crea. La instalación pide permisos de administrador.
 
 Los binarios de yt-dlp y ffmpeg viajan junto al instalador y se copian
 a `%APPDATA%\Lumitrack\bin` la primera vez que se abre: son archivos de
 usuario, y Program Files no se puede escribir sin administrador.
-Al desinstalar se borra `%APPDATA%\Lumitrack` completo: binarios, caché
-de la ventana y cualquier dato local de la app.
+
+Esa carpeta (`%APPDATA%\Lumitrack`, AppData\Roaming) es la `userData`
+de Electron. Ahí van los binarios, la caché de la ventana y, más
+adelante, la configuración y las bases de datos locales. No van en
+Program Files: esa ruta no es del usuario y no se puede escribir sin
+administrador.
+
+Al desinstalar, esa carpeta se borra completa. El asistente muestra
+antes la opción "Mantener mi información personal", desmarcada. Si se
+marca, la carpeta queda para una instalación futura. Una actualización
+de la app no la toca.
 
 ## Ícono
 
