@@ -38,8 +38,9 @@ npm run dist
 ```
 
 El setup de Windows queda en `installer/dist/` (en la raíz del repo).
-Esa carpeta y el `.exe` no entran al repositorio: el instalador se
-publica como GitHub Release. Quien lo instala no necesita Node. La ruta por defecto es
+Esa carpeta no se versiona. Para generar el `.exe` local: `npm run dist`.
+Para publicar Release + `latest.yml` (actualizaciones): `npm run dist:publish`
+con `GH_TOKEN`. Quien lo instala no necesita Node. La ruta por defecto es
 `C:\Program Files\Lumitrack` (en Windows en español, Archivos de programa).
 El asistente deja cambiarla —otro disco, por ejemplo `D:\`— y crea esa
 carpeta si todavía no existe. Después pregunta si crear un icono de
@@ -48,6 +49,11 @@ casilleros vienen marcados: si se desmarca uno, ese acceso no se crea.
 Hace falta permiso
 de administrador porque Program Files no es escribible para un usuario
 normal.
+
+El ícono de la app y del setup está en `installer/build/icon.ico`.
+La app instalada puede chequear actualizaciones en segundo plano contra
+GitHub Releases; la instalación de la update queda a confirmación del
+usuario (modal de UI pendiente).
 
 yt-dlp y ffmpeg van dentro del instalador y, al primer arranque, se copian
 a `%APPDATA%\Lumitrack\bin`. Esa carpeta es la `userData` de Electron
@@ -88,7 +94,8 @@ Lumitrack/
 │   ├── electron-builder.yml
 │   └── build/
 │       ├── installer.nsh         carpeta, acceso directo y datos de usuario
-│       └── icon.ico              (opcional)
+│       ├── icon.ico              ícono Windows (app + setup)
+│       └── icon.png              master del ícono
 │
 └── lumitrack/                    → código de la app
     ├── Lumitrack.bat              → abre la ventana de escritorio

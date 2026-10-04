@@ -27,8 +27,19 @@ extraResources:
       - yt-dlp
       - ffmpeg.exe
       - ffmpeg
+  - from: ../installer/build/icon.png
+    to: icon.png
+
+# GitHub Releases: genera latest.yml para electron-updater.
+# Publicar con: npm run dist:publish (requiere GH_TOKEN).
+publish:
+  provider: github
+  owner: nicolasfernandezriesen
+  repo: Lumitrack
+  releaseType: release
 
 win:
+  icon: icon.ico
   target:
     - target: nsis
       arch:
@@ -47,6 +58,9 @@ nsis:
   allowToChangeInstallationDirectory: true
   allowElevation: true
   include: installer.nsh
+  installerIcon: icon.ico
+  uninstallerIcon: icon.ico
+  installerHeaderIcon: icon.ico
   # El asistente pregunta después de la ruta, por el escritorio y por
   # el menú Inicio. Si el usuario desmarca una opción, installer.nsh
   # borra ese acceso directo al terminar.
@@ -54,3 +68,4 @@ nsis:
   createStartMenuShortcut: true
   shortcutName: Lumitrack
   uninstallDisplayName: Lumitrack
+

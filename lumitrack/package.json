@@ -1,19 +1,25 @@
 {
   "name": "lumitrack",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Visualizador de audio en barras de luz con búsqueda por YouTube. Uso personal, no comercial.",
   "author": "Lumitrack",
   "type": "module",
   "main": "desktop/main.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nicolasfernandezriesen/Lumitrack.git"
+  },
   "scripts": {
     "start": "node start.js",
     "desktop": "electron .",
     "server": "node server/index.js",
     "dev": "node --watch server/index.js",
     "setup": "node setup.js",
-    "dist": "electron-builder --win nsis --config ../installer/electron-builder.yml"
+    "dist": "electron-builder --win nsis --config ../installer/electron-builder.yml --publish never",
+    "dist:publish": "electron-builder --win nsis --config ../installer/electron-builder.yml --publish always"
   },
   "dependencies": {
+    "electron-updater": "^6.8.9",
     "express": "^4.19.2",
     "ytmusic-api": "^5.3.1"
   },

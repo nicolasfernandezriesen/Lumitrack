@@ -2,8 +2,10 @@ import { app, BrowserWindow, Menu } from "electron";
 import { copyFileSync, existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { bindUpdaterIpc, startBackgroundUpdateCheck } from "./updater.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const PRELOAD = path.join(__dirname, "preload.cjs");
 
 let server = null;
 let abortAllStreams = () => {};
@@ -27,6 +29,7 @@ if (!app.requestSingleInstanceLock()) {
 async function boot() {
   Menu.setApplicationMenu(null);
   app.setAppUserModelId("app.lumitrack.desktop");
+  bindUpdaterIpc();
 
   const binaries = binDir();
   process.env.LUMITRACK_BIN_DIR = binaries;
@@ -62,6 +65,8 @@ async function boot() {
       opened = true;
       if (!splash.isDestroyed()) splash.close();
       mainWindow.show();
+      // Chequeo en segundo plano; el modal futuro escuchará updater:status.
+      startBackgroundUpdateCheck(mainWindow);
     });
     await mainWindow.loadURL(started.url);
   } catch (err) {
@@ -95,23 +100,42 @@ function focus(win) {
   win.focus();
 }
 
-function createSplash() {
-  const splash = new BrowserWindow({
-    width: 480,
-    height: 240,
-    resizable: false,
-    maximizable: false,
-    minimizable: false,
-    fullscreenable: false,
+function appIconPath() {
+  const packaged = path.join(process.resourcesPath, "icon.png");
+  if (app.isPackaged && existsSync(packaged)) return packaged;
+  const fromInstaller = path.join(__dirname, "../../installer/build/icon.png");
+  if (existsSync(fromInstaller)) return fromInstaller;
+  return undefined;
+}
+
+function windowOptions(extra = {}) {
+  const icon = appIconPath();
+  return {
     title: "Lumitrack",
     backgroundColor: "#08080a",
     autoHideMenuBar: true,
+    ...(icon ? { icon } : {}),
     webPreferences: {
+      preload: PRELOAD,
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
     },
-  });
+    ...extra,
+  };
+}
+
+function createSplash() {
+  const splash = new BrowserWindow(
+    windowOptions({
+      width: 480,
+      height: 240,
+      resizable: false,
+      maximizable: false,
+      minimizable: false,
+      fullscreenable: false,
+    }),
+  );
   splash.loadFile(path.join(__dirname, "splash.html"));
   return splash;
 }
@@ -136,19 +160,13 @@ function bindStatus(splash) {
 }
 
 function createMainWindow() {
-  return new BrowserWindow({
-    width: 1280,
-    height: 800,
-    minWidth: 960,
-    minHeight: 640,
-    show: false,
-    title: "Lumitrack",
-    backgroundColor: "#08080a",
-    autoHideMenuBar: true,
-    webPreferences: {
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: true,
-    },
-  });
+  return new BrowserWindow(
+    windowOptions({
+      width: 1280,
+      height: 800,
+      minWidth: 960,
+      minHeight: 640,
+      show: false,
+    }),
+  );
 }

@@ -15,9 +15,14 @@ npm install
 npm run dist
 ```
 
-El instalador sale en `installer/dist/Lumitrack-Setup-<versión>.exe`.
-Ese `.exe` y el resto de `dist/` no se suben al repositorio: se publican
-como GitHub Release.
+El instalador sale en `installer/dist/Lumitrack-Setup-<versión>.exe`
+(y `latest.yml` para actualizaciones). Esa carpeta no se versiona.
+
+Para subir una Release a GitHub (con `GH_TOKEN` en el entorno):
+
+```bash
+npm run dist:publish
+```
 
 Ese `.exe` instala la ventana de escritorio. No le pide Node a quien
 lo usa. La ruta por defecto es `C:\Program Files\Lumitrack`. En el
@@ -44,5 +49,17 @@ de la app no la toca.
 
 ## Ícono
 
-Si existe `installer/build/icon.ico`, electron-builder lo usa como
-ícono de la app y del setup.
+`installer/build/icon.ico` (y `icon.png`) son el ícono de la app, del
+setup y de los accesos directos. Ya están cableados en
+`electron-builder.yml`.
+
+## Actualizaciones
+
+La app empaquetada usa `electron-updater` contra GitHub Releases.
+Al abrir, chequea en segundo plano si hay versión nueva; **no descarga
+ni instala sola**. El renderer expone `window.lumitrackUpdater` para
+un modal futuro (`getState` / `check` / `download` / `install` /
+`onStatus`).
+
+Para que el chequeo funcione, cada Release tiene que incluir el
+`.exe` y `latest.yml` (los genera `npm run dist:publish`).
