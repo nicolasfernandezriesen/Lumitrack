@@ -11,9 +11,6 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PRELOAD = path.join(__dirname, "preload.cjs");
 
-// TEMP: forced splash delay for animation testing — delete this constant (and its await) when done.
-const SPLASH_TEST_MIN_MS = 3000;
-
 let server = null;
 let abortAllStreams = () => {};
 let mainWindow = null;
@@ -54,35 +51,27 @@ async function boot() {
   });
 
   try {
-    // TEMP: parallel min splash time — remove with SPLASH_TEST_MIN_MS above.
-    const splashTestDelay = wait(SPLASH_TEST_MIN_MS);
-
     splashApi.setStatus("Preparando Lumitrack");
     splashApi.setProgressStage(18);
 
-    const bootWork = (async () => {
-      const { runSetup } = await import("../setup.js");
-      await runSetup({
-        onStatus: (msg) => {
-          splashApi.setStatus(msg);
-          splashApi.setProgressStage(45);
-        },
-      });
+    const { runSetup } = await import("../setup.js");
+    await runSetup({
+      onStatus: (msg) => {
+        splashApi.setStatus(msg);
+        splashApi.setProgressStage(45);
+      },
+    });
 
-      const streamService = await import("../server/services/streamService.js");
-      abortAllStreams = streamService.abortAllStreams;
+    const streamService = await import("../server/services/streamService.js");
+    abortAllStreams = streamService.abortAllStreams;
 
-      splashApi.setStatus("Abriendo");
-      splashApi.setProgressStage(70);
+    splashApi.setStatus("Abriendo");
+    splashApi.setProgressStage(70);
 
-      const { startServer } = await import("../server/index.js");
-      const started = await startServer({ port: 0 });
-      server = started.server;
-      splashApi.setProgressStage(88);
-      return started;
-    })();
-
-    const [, started] = await Promise.all([splashTestDelay, bootWork]);
+    const { startServer } = await import("../server/index.js");
+    const started = await startServer({ port: 0 });
+    server = started.server;
+    splashApi.setProgressStage(88);
 
     mainWindow = createMainWindow();
     attachUpdaterWindow(mainWindow);

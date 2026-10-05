@@ -1,26 +1,53 @@
-import { app, ipcMain } from "electron";
+import { app, ipcMain, shell } from "electron";
 import updater from "electron-updater";
 
 const { autoUpdater } = updater;
+
+const REPO_RELEASES = "https://github.com/nicolasfernandezriesen/Lumitrack/releases";
 
 /**
  * Actualizaciones vía GitHub Releases (latest.yml + NSIS).
  *
  * Flujo:
- * 1. Al abrir (splash), check en segundo plano.
- * 2. Si hay versión nueva, shouldShowUpdateModal=true y el renderer recibe "updater:status".
- * 3. El modal futuro llama download → install; sin confirmación no se instala.
+ * 1. Splash: check en segundo plano.
+ * 2. Si hay versión nueva → modal "disponible" (shouldShowUpdateModal).
+ * 3. Usuario acepta → download en segundo plano (sigue usando la app).
+ * 4. Al terminar → modal de cierre (shouldShowInstallModal) + quitAndInstall.
+ *
+ * NSIS no puede reemplazar binarios mientras la app corre; la instalación
+ * en caliente no es viable. autoInstallOnAppQuit queda como red de seguridad
+ * si el proceso se cierra antes del modal de instalación.
  */
 
 /** @typedef {'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'error'} UpdaterStatus */
 
-/** @type {{ status: UpdaterStatus, version: string | null, progress: number | null, error: string | null, shouldShowUpdateModal: boolean }} */
+/** @typedef {{ title: string, body: string }} ReleaseHighlight */
+
+/**
+ * @type {{
+ *   status: UpdaterStatus,
+ *   version: string | null,
+ *   currentVersion: string,
+ *   progress: number | null,
+ *   error: string | null,
+ *   releaseNotes: string | null,
+ *   highlights: ReleaseHighlight[],
+ *   changelogUrl: string | null,
+ *   shouldShowUpdateModal: boolean,
+ *   shouldShowInstallModal: boolean,
+ * }}
+ */
 let state = {
   status: "idle",
   version: null,
+  currentVersion: app.getVersion(),
   progress: null,
   error: null,
+  releaseNotes: null,
+  highlights: [],
+  changelogUrl: null,
   shouldShowUpdateModal: false,
+  shouldShowInstallModal: false,
 };
 
 /** @type {import('electron').BrowserWindow | null} */
@@ -28,7 +55,11 @@ let targetWindow = null;
 let wired = false;
 
 export function getUpdaterState() {
-  return { ...state };
+  return {
+    ...state,
+    currentVersion: app.getVersion(),
+    highlights: state.highlights.map((h) => ({ ...h })),
+  };
 }
 
 /** Points status events at the main window (call once it exists). */
@@ -37,11 +68,15 @@ export function attachUpdaterWindow(win) {
   if (targetWindow && !targetWindow.isDestroyed()) {
     targetWindow.webContents.send("updater:status", getUpdaterState());
   }
+  maybeApplyMockUpdate();
 }
 
 /** Arranca el chequeo en segundo plano. No descarga ni instala sola. */
 export function startBackgroundUpdateCheck(win) {
-  if (!app.isPackaged) return;
+  if (!app.isPackaged) {
+    maybeApplyMockUpdate();
+    return;
+  }
   if (win) targetWindow = win;
   ensureWired();
   if (state.status === "checking" || state.status === "downloading") return;
@@ -51,21 +86,43 @@ export function startBackgroundUpdateCheck(win) {
   });
 }
 
+export function dismissUpdateModal() {
+  setState({ shouldShowUpdateModal: false });
+}
+
 export function downloadUpdate() {
-  if (!app.isPackaged) return Promise.reject(new Error("Solo en la app instalada"));
+  if (!app.isPackaged) {
+    return mockDownload();
+  }
   ensureWired();
   if (state.status !== "available" && state.status !== "error") {
     return Promise.reject(new Error("No hay una actualización lista para descargar"));
   }
-  setState({ status: "downloading", progress: 0, error: null });
+  setState({
+    status: "downloading",
+    progress: 0,
+    error: null,
+    shouldShowUpdateModal: false,
+  });
   return autoUpdater.downloadUpdate();
 }
 
 export function installUpdate() {
-  if (!app.isPackaged) return;
+  if (!app.isPackaged) {
+    setState({ shouldShowInstallModal: false });
+    app.quit();
+    return;
+  }
   ensureWired();
-  // isSilent=false, isForceRunAfter=true: reinstala y vuelve a abrir.
-  autoUpdater.quitAndInstall(false, true);
+  // isSilent=true, isForceRunAfter=true: instalador silencioso y reabre la app.
+  autoUpdater.quitAndInstall(true, true);
+}
+
+export function openChangelog() {
+  const url =
+    state.changelogUrl ||
+    (state.version ? `${REPO_RELEASES}/tag/v${state.version}` : REPO_RELEASES);
+  return shell.openExternal(url);
 }
 
 export function bindUpdaterIpc() {
@@ -75,11 +132,16 @@ export function bindUpdaterIpc() {
     startBackgroundUpdateCheck(targetWindow);
     return getUpdaterState();
   });
+  ipcMain.handle("updater:dismiss", () => {
+    dismissUpdateModal();
+    return getUpdaterState();
+  });
   ipcMain.handle("updater:download", () => downloadUpdate().then(() => getUpdaterState()));
   ipcMain.handle("updater:install", () => {
     installUpdate();
     return getUpdaterState();
   });
+  ipcMain.handle("updater:open-changelog", () => openChangelog().then(() => true));
 }
 
 function ensureWired() {
@@ -95,13 +157,7 @@ function ensureWired() {
   });
 
   autoUpdater.on("update-available", (info) => {
-    setState({
-      status: "available",
-      version: info?.version ?? null,
-      progress: null,
-      error: null,
-      shouldShowUpdateModal: true,
-    });
+    applyAvailableUpdate(info);
   });
 
   autoUpdater.on("update-not-available", () => {
@@ -110,27 +166,140 @@ function ensureWired() {
       version: null,
       progress: null,
       error: null,
+      releaseNotes: null,
+      highlights: [],
+      changelogUrl: null,
       shouldShowUpdateModal: false,
+      shouldShowInstallModal: false,
     });
   });
 
   autoUpdater.on("download-progress", (progress) => {
     const pct = typeof progress?.percent === "number" ? progress.percent : null;
-    setState({ status: "downloading", progress: pct });
+    setState({ status: "downloading", progress: pct, shouldShowUpdateModal: false });
   });
 
   autoUpdater.on("update-downloaded", (info) => {
+    // Safety net: if the app quits before the install modal finishes, still install.
+    autoUpdater.autoInstallOnAppQuit = true;
     setState({
       status: "downloaded",
       version: info?.version ?? state.version,
       progress: 100,
       error: null,
-      shouldShowUpdateModal: true,
+      shouldShowUpdateModal: false,
+      shouldShowInstallModal: true,
+      changelogUrl:
+        state.changelogUrl ||
+        (info?.version ? `${REPO_RELEASES}/tag/v${info.version}` : REPO_RELEASES),
     });
   });
 
   autoUpdater.on("error", (err) => {
     setState({ status: "error", error: err?.message || String(err) });
+  });
+}
+
+function applyAvailableUpdate(info) {
+  const version = info?.version ?? null;
+  const releaseNotes = normalizeReleaseNotes(info?.releaseNotes);
+  setState({
+    status: "available",
+    version,
+    progress: null,
+    error: null,
+    releaseNotes,
+    highlights: buildHighlights(releaseNotes),
+    changelogUrl: version ? `${REPO_RELEASES}/tag/v${version}` : REPO_RELEASES,
+    shouldShowUpdateModal: true,
+    shouldShowInstallModal: false,
+  });
+}
+
+function normalizeReleaseNotes(notes) {
+  if (!notes) return null;
+  if (typeof notes === "string") return notes.trim() || null;
+  if (Array.isArray(notes)) {
+    return notes
+      .map((n) => (typeof n === "string" ? n : n?.note || ""))
+      .filter(Boolean)
+      .join("\n")
+      .trim() || null;
+  }
+  return null;
+}
+
+/** Turn release notes into up to 3 highlight cards for the modal. */
+export function buildHighlights(releaseNotes) {
+  const fallback = [
+    {
+      title: "Novedades de esta versión",
+      body: "Mejoras, correcciones y optimizaciones listas para instalar.",
+    },
+  ];
+  if (!releaseNotes) return fallback;
+
+  const lines = releaseNotes
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^#+\s*/, "").replace(/^[-*•]\s+/, "").trim())
+    .filter((line) => line.length > 3);
+
+  if (!lines.length) return fallback;
+
+  return lines.slice(0, 3).map((line) => {
+    const sep = line.indexOf(":");
+    if (sep > 0 && sep < 48) {
+      return {
+        title: line.slice(0, sep).trim(),
+        body: line.slice(sep + 1).trim() || line,
+      };
+    }
+    const words = line.split(/\s+/);
+    const title = words.slice(0, 5).join(" ");
+    return {
+      title: title.length < line.length ? `${title}…` : title,
+      body: line,
+    };
+  });
+}
+
+function maybeApplyMockUpdate() {
+  if (app.isPackaged) return;
+  if (process.env.LUMITRACK_MOCK_UPDATE !== "1") return;
+  if (state.status === "available" || state.status === "downloaded") return;
+  applyAvailableUpdate({
+    version: "0.4.0",
+    releaseNotes: [
+      "Mejoras en rendimiento: Renderizado del visualizador más fluido con menor consumo.",
+      "Estabilidad: Correcciones menores y mejor manejo de errores de reproducción.",
+      "Actualizaciones: Flujo de instalación más claro desde la propia app.",
+    ].join("\n"),
+  });
+}
+
+function mockDownload() {
+  setState({
+    status: "downloading",
+    progress: 0,
+    shouldShowUpdateModal: false,
+    error: null,
+  });
+  return new Promise((resolve) => {
+    let pct = 0;
+    const timer = setInterval(() => {
+      pct = Math.min(100, pct + 20);
+      setState({ status: "downloading", progress: pct });
+      if (pct >= 100) {
+        clearInterval(timer);
+        setState({
+          status: "downloaded",
+          progress: 100,
+          shouldShowInstallModal: true,
+          shouldShowUpdateModal: false,
+        });
+        resolve();
+      }
+    }, 200);
   });
 }
 
