@@ -6,6 +6,8 @@ import { createNowPlaying } from "./views/nowPlaying.js";
 import { createPlayerControls } from "./views/playerControls.js";
 import { createVolumeControl } from "./views/volumeControl.js";
 import { createFullscreenToggle } from "./views/fullscreenToggle.js";
+import { createUpdaterModal } from "./views/updaterModal.js";
+import { getUpdaterApi } from "./services/updaterClient.js";
 
 const BAR_COUNT = 100;
 const APP_NAME = "Lumitrack";
@@ -113,10 +115,16 @@ function main() {
     }
   }
 
+  const updaterModal = createUpdaterModal({
+    rootEl: document.body,
+    api: getUpdaterApi(),
+  });
+
   searchPanel.init();
   playerControls.init();
   volumeControl.init();
   fullscreenToggle.init();
+  updaterModal.init();
 }
 
 main();
