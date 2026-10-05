@@ -57,9 +57,9 @@ setup y de los accesos directos. Ya están cableados en
 
 La app empaquetada usa `electron-updater` contra GitHub Releases.
 Al abrir, chequea en segundo plano si hay versión nueva; **no descarga
-ni instala sola**. El renderer expone `window.lumitrackUpdater` para
-un modal futuro (`getState` / `check` / `download` / `install` /
-`onStatus`).
+ni instala sola** hasta que el usuario confirma en el modal. El
+renderer expone `window.lumitrackUpdater` (`getState` / `check` /
+`dismiss` / `download` / `install` / `openChangelog` / `onStatus`).
 
 Para que el chequeo funcione, cada Release tiene que incluir el
 `.exe` y `latest.yml` (los genera `npm run dist:publish`).

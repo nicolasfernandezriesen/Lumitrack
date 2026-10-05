@@ -6,8 +6,8 @@
 function createBrowserMockApi() {
   let state = {
     status: "available",
-    version: "0.3.0",
-    currentVersion: "0.2.1",
+    version: "0.4.0",
+    currentVersion: "0.3.0",
     progress: null,
     error: null,
     releaseNotes: null,
