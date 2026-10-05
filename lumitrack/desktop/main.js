@@ -2,10 +2,17 @@ import { app, BrowserWindow, Menu } from "electron";
 import { copyFileSync, existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { bindUpdaterIpc, startBackgroundUpdateCheck } from "./updater.js";
+import {
+  attachUpdaterWindow,
+  bindUpdaterIpc,
+  startBackgroundUpdateCheck,
+} from "./updater.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PRELOAD = path.join(__dirname, "preload.cjs");
+
+// TEMP: forced splash delay for animation testing — delete this constant (and its await) when done.
+const SPLASH_TEST_MIN_MS = 3000;
 
 let server = null;
 let abortAllStreams = () => {};
@@ -30,6 +37,8 @@ async function boot() {
   Menu.setApplicationMenu(null);
   app.setAppUserModelId("app.lumitrack.desktop");
   bindUpdaterIpc();
+  // Check for updates as soon as the splash is up (packaged builds only).
+  startBackgroundUpdateCheck();
 
   const binaries = binDir();
   process.env.LUMITRACK_BIN_DIR = binaries;
@@ -37,7 +46,7 @@ async function boot() {
   seedBundledBinaries(binaries);
 
   const splash = createSplash();
-  const setStatus = bindStatus(splash);
+  const splashApi = bindSplash(splash);
   let opened = false;
 
   splash.on("closed", () => {
@@ -45,34 +54,57 @@ async function boot() {
   });
 
   try {
-    setStatus("Preparando Lumitrack…");
-    const { runSetup } = await import("../setup.js");
-    await runSetup({ onStatus: setStatus });
+    // TEMP: parallel min splash time — remove with SPLASH_TEST_MIN_MS above.
+    const splashTestDelay = wait(SPLASH_TEST_MIN_MS);
 
-    const streamService = await import("../server/services/streamService.js");
-    abortAllStreams = streamService.abortAllStreams;
+    splashApi.setStatus("Preparando Lumitrack");
+    splashApi.setProgressStage(18);
 
-    setStatus("Abriendo…");
-    const { startServer } = await import("../server/index.js");
-    const started = await startServer({ port: 0 });
-    server = started.server;
+    const bootWork = (async () => {
+      const { runSetup } = await import("../setup.js");
+      await runSetup({
+        onStatus: (msg) => {
+          splashApi.setStatus(msg);
+          splashApi.setProgressStage(45);
+        },
+      });
+
+      const streamService = await import("../server/services/streamService.js");
+      abortAllStreams = streamService.abortAllStreams;
+
+      splashApi.setStatus("Abriendo");
+      splashApi.setProgressStage(70);
+
+      const { startServer } = await import("../server/index.js");
+      const started = await startServer({ port: 0 });
+      server = started.server;
+      splashApi.setProgressStage(88);
+      return started;
+    })();
+
+    const [, started] = await Promise.all([splashTestDelay, bootWork]);
 
     mainWindow = createMainWindow();
+    attachUpdaterWindow(mainWindow);
+
     mainWindow.webContents.on("did-fail-load", (_event, _code, description) => {
-      setStatus(`No se pudo abrir la interfaz: ${description}`);
+      splashApi.setStatus(`No se pudo abrir la interfaz: ${description}`);
     });
     mainWindow.once("ready-to-show", () => {
       opened = true;
+      splashApi.completeProgress();
       if (!splash.isDestroyed()) splash.close();
       mainWindow.show();
-      // Chequeo en segundo plano; el modal futuro escuchará updater:status.
-      startBackgroundUpdateCheck(mainWindow);
     });
     await mainWindow.loadURL(started.url);
   } catch (err) {
     console.error(err);
-    setStatus(err?.message || "No se pudo iniciar Lumitrack.");
+    splashApi.setStatus(err?.message || "No se pudo iniciar Lumitrack.");
   }
+}
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function binDir() {
@@ -129,7 +161,7 @@ function createSplash() {
   const splash = new BrowserWindow(
     windowOptions({
       width: 480,
-      height: 240,
+      height: 300,
       resizable: false,
       maximizable: false,
       minimizable: false,
@@ -140,22 +172,55 @@ function createSplash() {
   return splash;
 }
 
-function bindStatus(splash) {
+function bindSplash(splash) {
   let ready = false;
   const pending = [];
-  const paint = (text) => {
+
+  const run = (expression) => {
     if (splash.isDestroyed()) return;
-    splash.webContents
-      .executeJavaScript(`document.getElementById("msg").textContent = ${JSON.stringify(text)}`)
-      .catch(() => {});
+    splash.webContents.executeJavaScript(expression).catch(() => {});
   };
-  splash.webContents.once("did-finish-load", () => {
+
+  const flush = () => {
+    for (const fn of pending) fn();
+    pending.length = 0;
+  };
+
+  const whenReady = (fn) => {
+    if (ready) fn();
+    else pending.push(fn);
+  };
+
+  splash.webContents.once("did-finish-load", async () => {
+    // Module script may finish just after navigation; wait until the API exists.
+    for (let i = 0; i < 40; i++) {
+      if (splash.isDestroyed()) return;
+      const ok = await splash.webContents
+        .executeJavaScript("Boolean(window.__splash)")
+        .catch(() => false);
+      if (ok) break;
+      await wait(25);
+    }
     ready = true;
-    for (const text of pending) paint(text);
+    flush();
   });
-  return (text) => {
-    if (!ready) pending.push(text);
-    else paint(text);
+
+  return {
+    setStatus(detail) {
+      whenReady(() => {
+        run(`window.__splash && window.__splash.setStatus(${JSON.stringify(detail)})`);
+      });
+    },
+    setProgressStage(pct) {
+      whenReady(() => {
+        run(`window.__splash && window.__splash.setProgressStage(${Number(pct)})`);
+      });
+    },
+    completeProgress() {
+      whenReady(() => {
+        run(`window.__splash && window.__splash.completeProgress()`);
+      });
+    },
   };
 }
 

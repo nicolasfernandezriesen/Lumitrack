@@ -4,45 +4,96 @@
 <meta charset="UTF-8">
 <title>Lumitrack</title>
 <style>
+  :root {
+    --bg: #08080a;
+    --fg: #f2f1ee;
+    --fg-dim: rgba(242, 241, 238, 0.68);
+    --accent: #7c8cff;
+    --accent-2: #ff6b6b;
+    --glow: 124, 140, 255;
+  }
+
   html, body {
     margin: 0;
     height: 100%;
-    background: #08080a;
-    color: #f2f1ee;
+    background: var(--bg);
+    color: var(--fg);
     font-family: "Segoe UI", system-ui, sans-serif;
   }
+
   body {
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 18px;
+    gap: 22px;
+    user-select: none;
   }
+
   h1 {
     margin: 0;
     font-weight: 500;
     font-size: 22px;
     letter-spacing: 0.14em;
   }
+
+  #eq-bars {
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    gap: 10px;
+    height: 72px;
+    width: 120px;
+  }
+
+  .eq-bar {
+    width: 12px;
+    min-height: 6%;
+    border-radius: 3px 3px 0 0;
+    background: linear-gradient(
+      180deg,
+      var(--accent-2) 0%,
+      var(--accent) 55%,
+      rgba(var(--glow), 0.28) 100%
+    );
+    box-shadow: 0 0 12px rgba(var(--glow), 0.35);
+    transform-origin: bottom;
+  }
+
+  #progress {
+    width: 200px;
+    height: 4px;
+    border-radius: 2px;
+    background: rgba(124, 140, 255, 0.18);
+    overflow: hidden;
+  }
+
+  #progress-fill {
+    height: 100%;
+    width: 0%;
+    border-radius: 2px;
+    background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    box-shadow: 0 0 10px rgba(var(--glow), 0.45);
+  }
+
   #msg {
     margin: 0;
     max-width: 380px;
-    min-height: 2.8em;
+    min-height: 1.4em;
     text-align: center;
-    color: rgba(242, 241, 238, 0.68);
+    color: var(--fg-dim);
     font-size: 14px;
     line-height: 1.4;
-  }
-  .bar {
-    width: 160px;
-    height: 2px;
-    background: #7c8cff;
   }
 </style>
 </head>
 <body>
   <h1>LUMITRACK</h1>
-  <div class="bar"></div>
-  <p id="msg">Preparando…</p>
+  <div id="eq-bars" aria-hidden="true"></div>
+  <div id="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100">
+    <div id="progress-fill"></div>
+  </div>
+  <p id="msg">Cargando…</p>
+  <script type="module" src="./splash.js"></script>
 </body>
 </html>

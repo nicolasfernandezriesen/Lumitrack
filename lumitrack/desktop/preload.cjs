@@ -3,6 +3,7 @@ const { contextBridge, ipcRenderer } = require("electron");
 /**
  * Bridge para el modal de actualización (aún no hay UI).
  * En el renderer: window.lumitrackUpdater.getState() / onStatus(...)
+ * Cuando shouldShowUpdateModal === true, la vista principal puede abrir el modal.
  */
 contextBridge.exposeInMainWorld("lumitrackUpdater", {
   getState: () => ipcRenderer.invoke("updater:get-state"),

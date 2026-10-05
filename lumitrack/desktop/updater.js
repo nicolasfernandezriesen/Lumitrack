@@ -6,20 +6,21 @@ const { autoUpdater } = updater;
 /**
  * Actualizaciones vía GitHub Releases (latest.yml + NSIS).
  *
- * Flujo previsto (UI todavía no):
- * 1. Al abrir la app empaquetada, check en segundo plano.
- * 2. Si hay versión nueva, el renderer recibe "updater:status".
+ * Flujo:
+ * 1. Al abrir (splash), check en segundo plano.
+ * 2. Si hay versión nueva, shouldShowUpdateModal=true y el renderer recibe "updater:status".
  * 3. El modal futuro llama download → install; sin confirmación no se instala.
  */
 
 /** @typedef {'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'error'} UpdaterStatus */
 
-/** @type {{ status: UpdaterStatus, version: string | null, progress: number | null, error: string | null }} */
+/** @type {{ status: UpdaterStatus, version: string | null, progress: number | null, error: string | null, shouldShowUpdateModal: boolean }} */
 let state = {
   status: "idle",
   version: null,
   progress: null,
   error: null,
+  shouldShowUpdateModal: false,
 };
 
 /** @type {import('electron').BrowserWindow | null} */
@@ -30,10 +31,18 @@ export function getUpdaterState() {
   return { ...state };
 }
 
+/** Points status events at the main window (call once it exists). */
+export function attachUpdaterWindow(win) {
+  targetWindow = win ?? targetWindow;
+  if (targetWindow && !targetWindow.isDestroyed()) {
+    targetWindow.webContents.send("updater:status", getUpdaterState());
+  }
+}
+
 /** Arranca el chequeo en segundo plano. No descarga ni instala sola. */
 export function startBackgroundUpdateCheck(win) {
   if (!app.isPackaged) return;
-  targetWindow = win ?? targetWindow;
+  if (win) targetWindow = win;
   ensureWired();
   if (state.status === "checking" || state.status === "downloading") return;
   setState({ status: "checking", error: null });
@@ -91,11 +100,18 @@ function ensureWired() {
       version: info?.version ?? null,
       progress: null,
       error: null,
+      shouldShowUpdateModal: true,
     });
   });
 
   autoUpdater.on("update-not-available", () => {
-    setState({ status: "not-available", version: null, progress: null, error: null });
+    setState({
+      status: "not-available",
+      version: null,
+      progress: null,
+      error: null,
+      shouldShowUpdateModal: false,
+    });
   });
 
   autoUpdater.on("download-progress", (progress) => {
@@ -109,6 +125,7 @@ function ensureWired() {
       version: info?.version ?? state.version,
       progress: 100,
       error: null,
+      shouldShowUpdateModal: true,
     });
   });
 
