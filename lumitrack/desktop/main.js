@@ -191,7 +191,16 @@ function bindSplash(splash) {
     else pending.push(fn);
   };
 
-  splash.webContents.once("did-finish-load", () => {
+  splash.webContents.once("did-finish-load", async () => {
+    // Module script may finish just after navigation; wait until the API exists.
+    for (let i = 0; i < 40; i++) {
+      if (splash.isDestroyed()) return;
+      const ok = await splash.webContents
+        .executeJavaScript("Boolean(window.__splash)")
+        .catch(() => false);
+      if (ok) break;
+      await wait(25);
+    }
     ready = true;
     flush();
   });
