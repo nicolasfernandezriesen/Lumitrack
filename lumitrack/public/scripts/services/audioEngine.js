@@ -288,6 +288,10 @@ export function createAudioEngine({ barCount, onError, onStateChange, onProgress
     return state;
   }
 
+  function getCurrentTime() {
+    return audioEl && Number.isFinite(audioEl.currentTime) ? audioEl.currentTime : 0;
+  }
+
   function setVolume(nextVolume, nextMuted = muted) {
     volume = Math.min(1, Math.max(0, Number(nextVolume) || 0));
     muted = Boolean(nextMuted);
@@ -295,5 +299,5 @@ export function createAudioEngine({ barCount, onError, onStateChange, onProgress
     if (muted) onFrame?.(new Array(barCount).fill(3));
   }
 
-  return { play, pause, resume, replay, seek, currentState, setVolume };
+  return { play, pause, resume, replay, seek, currentState, getCurrentTime, setVolume };
 }

@@ -1,5 +1,6 @@
 import { createAudioEngine, PlaybackState } from "./services/audioEngine.js";
 import { extractDominantColor, complementary } from "./services/colorExtractor.js";
+import { createPlaylistController } from "./services/playlist.js";
 import { createVisualizer } from "./views/visualizer.js";
 import { createSearchPanel } from "./views/searchPanel.js";
 import { createNowPlaying } from "./views/nowPlaying.js";
@@ -14,8 +15,11 @@ const APP_NAME = "Lumitrack";
 const IDLE_TITLE = `${APP_NAME} — Visualizador audiorreactivo`;
 // Variante de texto (U+FE0E): la nota toma el color del título, no el del emoji a color.
 const MUSIC_NOTE = "\u{1F3B5}\uFE0E";
+/** Umbral del botón atrás: antes reinicia o va a la anterior; después solo reinicia. */
+const PREV_RESTART_SECONDS = 10;
 
 let currentTrackTitle = "";
+let autoAdvanceToken = 0;
 
 function syncDocumentTitle(state) {
   const playing = state === PlaybackState.PLAYING && currentTrackTitle;
@@ -25,6 +29,8 @@ function syncDocumentTitle(state) {
 }
 
 function main() {
+  const playlist = createPlaylistController();
+
   const visualizer = createVisualizer({
     barsWrapEl: document.getElementById("bars-wrap"),
     barCount: BAR_COUNT,
@@ -32,6 +38,9 @@ function main() {
 
   const nowPlaying = createNowPlaying({
     coverEl: document.getElementById("cover"),
+    coverPrevEl: document.getElementById("cover-prev"),
+    coverNextEl: document.getElementById("cover-next"),
+    coverStackEl: document.getElementById("cover-stack"),
     titleEl: document.getElementById("track-title"),
     artistEl: document.getElementById("track-artist"),
     loadingEl: document.getElementById("loading-indicator"),
@@ -39,10 +48,18 @@ function main() {
 
   const playerControls = createPlayerControls({
     playButtonEl: document.getElementById("play-toggle"),
+    prevButtonEl: document.getElementById("prev-track"),
+    nextButtonEl: document.getElementById("next-track"),
     timeRemainingEl: document.getElementById("time-remaining"),
     progressTrackEl: document.getElementById("progress-track"),
     progressFillEl: document.getElementById("progress-fill"),
     onPlayButtonClick: handlePlayButtonClick,
+    onPrevClick: () => {
+      void handlePrevClick();
+    },
+    onNextClick: () => {
+      void handleNextClick();
+    },
     onSeek: (seconds) => {
       void audioEngine.seek(seconds);
     },
@@ -54,7 +71,9 @@ function main() {
     inputEl: document.getElementById("search-input"),
     statusEl: document.getElementById("search-status"),
     resultsListEl: document.getElementById("results-list"),
-    onTrackSelected: playTrack,
+    onTrackSelected: (track) => {
+      void handleTrackSelected(track);
+    },
   });
 
   const fullscreenToggle = createFullscreenToggle({
@@ -76,8 +95,19 @@ function main() {
     onStateChange: (state) => {
       playerControls.setState(state);
       syncDocumentTitle(state);
+      if (state === PlaybackState.ENDED) {
+        void handleTrackEnded();
+      }
     },
     onProgress: playerControls.setProgress,
+  });
+
+  playlist.subscribe((snap) => {
+    nowPlaying.setNeighbors({ previous: snap.previous, next: snap.next });
+    playerControls.setNavAvailability({
+      hasPrevious: snap.hasPrevious,
+      hasNext: snap.hasNext,
+    });
   });
 
   nowPlaying.onCoverReady((imgEl) => {
@@ -87,6 +117,7 @@ function main() {
   });
 
   async function playTrack(track) {
+    if (!track?.videoId) return;
     currentTrackTitle = track.title?.trim() || "";
     syncDocumentTitle(PlaybackState.PLAYING);
     nowPlaying.show(track);
@@ -103,6 +134,58 @@ function main() {
     } finally {
       nowPlaying.setLoading(false);
     }
+  }
+
+  async function handleTrackSelected(track) {
+    autoAdvanceToken += 1;
+    await playlist.playFromSelection(track);
+    await playTrack(track);
+  }
+
+  async function handleTrackEnded() {
+    const token = ++autoAdvanceToken;
+    const next = await playlist.goNext();
+    if (token !== autoAdvanceToken) return;
+    if (next) {
+      await playTrack(next);
+      return;
+    }
+    // Sin siguiente: se queda en ENDED (botón replay).
+  }
+
+  async function handleNextClick() {
+    const snap = playlist.snapshot();
+    if (!snap.current) return;
+    autoAdvanceToken += 1;
+    const next = await playlist.goNext();
+    if (next) {
+      await playTrack(next);
+      return;
+    }
+    searchPanel.setStatus("No hay una canción siguiente todavía.");
+  }
+
+  async function handlePrevClick() {
+    const snap = playlist.snapshot();
+    if (!snap.current) return;
+
+    const elapsed = audioEngine.getCurrentTime();
+    if (elapsed > PREV_RESTART_SECONDS) {
+      await audioEngine.replay();
+      return;
+    }
+
+    if (snap.hasPrevious) {
+      autoAdvanceToken += 1;
+      const prev = playlist.goPrevious();
+      if (prev) {
+        await playTrack(prev);
+        return;
+      }
+    }
+
+    // Sin anterior (u otro flujo): reinicia la canción actual.
+    await audioEngine.replay();
   }
 
   function handlePlayButtonClick(state) {

@@ -2,7 +2,8 @@
 
 import { spawn } from "node:child_process";
 import { ytDlpPath } from "../infrastructure/binaries.js";
-import * as streamUrlCache from "../infrastructure/streamUrlCache.js";
+import * as urlCache from "../infrastructure/urlCache.js";
+import * as playlistUrlCache from "../infrastructure/playlistUrlCache.js";
 import { AUDIO_FORMAT, VIDEO_ID_RE, describeDirectUrl, watchUrl } from "../infrastructure/youtubeAudio.js";
 
 const CONCURRENCY = 2;
@@ -17,13 +18,35 @@ let activeDownloads = 0;
 /** Encola las pistas de una búsqueda. No bloquea la respuesta HTTP. */
 export function prefetch(videoIds) {
   const wanted = uniqueIds(videoIds);
-  const wantedSet = new Set(wanted);
+  const playlistIds = playlistUrlCache.windowIds();
+  const wantedSet = new Set([...wanted, ...playlistIds]);
 
   deferPump = true;
   for (const [id, job] of jobs) {
     if (!wantedSet.has(id) && !job.pinned) job.abort();
   }
-  queue = wanted.filter((id) => !streamUrlCache.get(id) && !jobs.has(id));
+  // Conserva en cola las de la ventana de playlist que aún falten.
+  const keepPlaylist = queue.filter((id) => playlistIds.includes(id));
+  const fresh = wanted.filter((id) => !urlCache.get(id) && !jobs.has(id));
+  queue = uniqueIds([...keepPlaylist, ...fresh, ...playlistIds.filter((id) => !urlCache.get(id) && !jobs.has(id))]);
+  deferPump = false;
+  pump();
+}
+
+/**
+ * Actualiza la ventana de playlist (URLs: 3 atrás + 3 adelante + actual)
+ * y encola la resolución de las que falten.
+ */
+export function setPlaylistWindow({ current = null, history = [], upcoming = [] } = {}) {
+  playlistUrlCache.setWindow({ current, history, upcoming });
+  const ids = playlistUrlCache.windowIds();
+  if (!ids.length) return;
+
+  deferPump = true;
+  for (const id of ids) {
+    if (urlCache.get(id) || jobs.has(id) || queue.includes(id)) continue;
+    queue.push(id);
+  }
   deferPump = false;
   pump();
 }
@@ -57,6 +80,12 @@ export function releaseDownload() {
   if (activeDownloads === 0) pump();
 }
 
+/** Resuelve una URL sin abortar otras resoluciones (útil para prefetch). */
+export function resolveUrl(videoId) {
+  if (!VIDEO_ID_RE.test(videoId)) return Promise.resolve(null);
+  return resolve(videoId);
+}
+
 /** Mata resoluciones en curso, por ejemplo al cerrar la ventana. */
 export function abortAll() {
   deferPump = true;
@@ -67,7 +96,7 @@ export function abortAll() {
 }
 
 function resolve(videoId) {
-  const cached = streamUrlCache.get(videoId);
+  const cached = urlCache.get(videoId);
   if (cached) return Promise.resolve(cached);
 
   const existing = jobs.get(videoId);
@@ -85,14 +114,14 @@ function pump() {
 
   while (jobs.size < CONCURRENCY && queue.length > 0) {
     const videoId = queue.shift();
-    if (!videoId || streamUrlCache.get(videoId) || jobs.has(videoId)) continue;
+    if (!videoId || urlCache.get(videoId) || jobs.has(videoId)) continue;
     startJob(videoId, false);
   }
 }
 
 function requeue(videoId) {
   if (!VIDEO_ID_RE.test(videoId)) return;
-  if (queue.includes(videoId) || jobs.has(videoId) || streamUrlCache.get(videoId)) return;
+  if (queue.includes(videoId) || jobs.has(videoId) || urlCache.get(videoId)) return;
   queue.unshift(videoId);
 }
 
@@ -174,7 +203,7 @@ function startJob(videoId, pinned) {
       return;
     }
 
-    streamUrlCache.set(videoId, entry);
+    urlCache.set(videoId, entry);
     finish(entry);
   });
 
