@@ -7,7 +7,7 @@ function createBrowserMockApi() {
   let state = {
     status: "available",
     version: "0.4.0",
-    currentVersion: "0.3.0",
+    currentVersion: "0.3.1",
     progress: null,
     error: null,
     releaseNotes: null,
@@ -30,7 +30,7 @@ function createBrowserMockApi() {
       },
       {
         title: "Versión",
-        body: "0.3.0 en empaquetado y etiqueta beta de la UI.",
+        body: "0.3.1 en empaquetado y etiqueta beta de la UI.",
       },
     ],
     changelogUrl: "https://github.com/nicolasfernandezriesen/Lumitrack/releases",
