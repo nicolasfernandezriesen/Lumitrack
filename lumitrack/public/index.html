@@ -20,13 +20,21 @@
   <div id="bars-wrap"></div>
 
   <div id="now-playing">
-    <img id="cover" alt="">
+    <div id="cover-stack">
+      <img id="cover-prev" class="cover-peek cover-peek--prev" alt="" hidden>
+      <img id="cover" alt="">
+      <img id="cover-next" class="cover-peek cover-peek--next" alt="" hidden>
+    </div>
+
     <div id="meta">
       <p id="track-title">Nada sonando todavía</p>
       <p id="track-artist">Buscá una canción para empezar</p>
+      <div id="transport" aria-label="Controles de reproducción">
+        <button id="prev-track" type="button" title="Anterior" aria-label="Anterior">⏮</button>
+        <button id="play-toggle" type="button" title="Reproducir" aria-label="Reproducir">▶</button>
+        <button id="next-track" type="button" title="Siguiente" aria-label="Siguiente">⏭</button>
+      </div>
     </div>
-
-    <button id="play-toggle" type="button" title="Reproducir" aria-label="Reproducir">▶</button>
 
     <div id="progress-track">
       <div id="progress-track-hit">
@@ -61,7 +69,7 @@
 </div>
 
 <div id="loading-indicator"><span class="spinner"></span><span>Cargando audio…</span></div>
-<div id="status">Beta V.0.3.1</div>
+<div id="status">Beta V.0.4.0</div>
 
 <script type="module" src="scripts/main.js"></script>
 </body>

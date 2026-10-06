@@ -16,20 +16,50 @@ const LABELS = {
 
 export function createPlayerControls({
   playButtonEl,
+  prevButtonEl,
+  nextButtonEl,
   timeRemainingEl,
   progressTrackEl,
   progressFillEl,
   onPlayButtonClick,
+  onPrevClick,
+  onNextClick,
   onSeek,
 }) {
   let state = PlaybackState.IDLE;
   let knownDuration = 0;
+  let hasCurrentTrack = false;
+  let canGoPrev = false;
+  let canGoNext = false;
 
   function setState(nextState) {
     state = nextState;
     playButtonEl.textContent = ICONS[state] ?? ICONS[PlaybackState.IDLE];
     playButtonEl.title = LABELS[state] ?? LABELS[PlaybackState.IDLE];
     playButtonEl.setAttribute("aria-label", playButtonEl.title);
+    syncNavButtons();
+  }
+
+  function setNavAvailability({
+    hasCurrent = false,
+    hasPrevious = false,
+    hasNext = false,
+  } = {}) {
+    hasCurrentTrack = !!hasCurrent;
+    canGoPrev = !!hasPrevious;
+    canGoNext = !!hasNext;
+    syncNavButtons();
+  }
+
+  function syncNavButtons() {
+    // La navegación depende de la playlist, no de si el audio ya arrancó.
+    if (prevButtonEl) {
+      prevButtonEl.disabled = !hasCurrentTrack;
+    }
+    if (nextButtonEl) {
+      nextButtonEl.disabled = !hasCurrentTrack || !canGoNext;
+    }
+    void canGoPrev;
   }
 
   function setProgress({ currentTime, duration }) {
@@ -66,10 +96,13 @@ export function createPlayerControls({
 
   function init() {
     playButtonEl.addEventListener("click", () => onPlayButtonClick(state));
+    prevButtonEl?.addEventListener("click", () => onPrevClick?.());
+    nextButtonEl?.addEventListener("click", () => onNextClick?.());
     progressTrackEl.addEventListener("click", handleTrackClick);
     setState(PlaybackState.IDLE);
     resetProgress();
+    syncNavButtons();
   }
 
-  return { init, setState, setProgress, resetProgress };
+  return { init, setState, setProgress, resetProgress, setNavAvailability };
 }

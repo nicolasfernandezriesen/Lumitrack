@@ -10,6 +10,7 @@ const HOST = "127.0.0.1";
 
 const app = express();
 
+app.use(express.json({ limit: "32kb" }));
 app.use(express.static(publicDir()));
 app.use("/api", searchRoutes);
 app.use("/api", streamRoutes);

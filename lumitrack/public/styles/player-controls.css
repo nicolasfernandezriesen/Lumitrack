@@ -1,22 +1,58 @@
-#play-toggle {
-  width: 40px;
-  height: 40px;
+#prev-track,
+#next-track {
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(12, 12, 18, 0.85);
   color: var(--fg);
-  font-size: 1rem;
+  font-size: 0.85rem;
   line-height: 1;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  transition: background 0.15s ease, transform 0.1s ease;
+  transition: background 0.15s ease, transform 0.1s ease, opacity 0.15s ease;
+}
+
+#prev-track:hover,
+#next-track:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+#prev-track:active,
+#next-track:active {
+  transform: scale(0.94);
+}
+
+#prev-track:disabled,
+#next-track:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+#play-toggle {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid rgba(var(--glow), 0.45);
+  background: rgba(var(--glow), 0.55);
+  color: #fff;
+  font-size: 1.05rem;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 0 18px rgba(var(--glow), 0.45);
+  transition: background 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
 }
 
 #play-toggle:hover {
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(var(--glow), 0.72);
+  box-shadow: 0 0 24px rgba(var(--glow), 0.55);
 }
 
 #play-toggle:active {
