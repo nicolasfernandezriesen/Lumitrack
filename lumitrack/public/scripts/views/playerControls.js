@@ -28,6 +28,7 @@ export function createPlayerControls({
 }) {
   let state = PlaybackState.IDLE;
   let knownDuration = 0;
+  let hasCurrentTrack = false;
   let canGoPrev = false;
   let canGoNext = false;
 
@@ -39,20 +40,24 @@ export function createPlayerControls({
     syncNavButtons();
   }
 
-  function setNavAvailability({ hasPrevious = false, hasNext = false } = {}) {
+  function setNavAvailability({
+    hasCurrent = false,
+    hasPrevious = false,
+    hasNext = false,
+  } = {}) {
+    hasCurrentTrack = !!hasCurrent;
     canGoPrev = !!hasPrevious;
     canGoNext = !!hasNext;
     syncNavButtons();
   }
 
   function syncNavButtons() {
-    const hasTrack = state !== PlaybackState.IDLE;
-    // Atrás siempre útil con pista cargada (reinicia o va a anterior).
+    // La navegación depende de la playlist, no de si el audio ya arrancó.
     if (prevButtonEl) {
-      prevButtonEl.disabled = !hasTrack;
+      prevButtonEl.disabled = !hasCurrentTrack;
     }
     if (nextButtonEl) {
-      nextButtonEl.disabled = !hasTrack || !canGoNext;
+      nextButtonEl.disabled = !hasCurrentTrack || !canGoNext;
     }
     void canGoPrev;
   }

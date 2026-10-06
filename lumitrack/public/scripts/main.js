@@ -105,6 +105,7 @@ function main() {
   playlist.subscribe((snap) => {
     nowPlaying.setNeighbors({ previous: snap.previous, next: snap.next });
     playerControls.setNavAvailability({
+      hasCurrent: !!snap.current,
       hasPrevious: snap.hasPrevious,
       hasNext: snap.hasNext,
     });
@@ -170,7 +171,13 @@ function main() {
     if (!snap.current) return;
 
     const elapsed = audioEngine.getCurrentTime();
-    if (elapsed > PREV_RESTART_SECONDS) {
+    const engineState = audioEngine.currentState();
+    const canRestart =
+      engineState === PlaybackState.PLAYING ||
+      engineState === PlaybackState.PAUSED ||
+      engineState === PlaybackState.ENDED;
+
+    if (elapsed > PREV_RESTART_SECONDS && canRestart) {
       await audioEngine.replay();
       return;
     }
@@ -184,8 +191,8 @@ function main() {
       }
     }
 
-    // Sin anterior (u otro flujo): reinicia la canción actual.
-    await audioEngine.replay();
+    // Sin anterior (u otro flujo): reinicia la canción actual si hay audio.
+    if (canRestart) await audioEngine.replay();
   }
 
   function handlePlayButtonClick(state) {

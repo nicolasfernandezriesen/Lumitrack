@@ -115,13 +115,31 @@ function normalizeUpNext(item) {
     typeof item?.artists === "string"
       ? item.artists
       : item?.artists?.name || pickArtist(item);
+
+  let duration = null;
+  if (typeof item?.duration === "number") {
+    duration = item.duration;
+  } else if (typeof item?.duration === "string" && /^\d+:\d+/.test(item.duration)) {
+    const parts = item.duration.split(":").map(Number);
+    if (parts.length === 2 && parts.every((n) => Number.isFinite(n))) {
+      duration = parts[0] * 60 + parts[1];
+    } else if (parts.length === 3 && parts.every((n) => Number.isFinite(n))) {
+      duration = parts[0] * 3600 + parts[1] * 60 + parts[2];
+    }
+  }
+
+  const thumb =
+    typeof item?.thumbnail === "string" && item.thumbnail.startsWith("http")
+      ? item.thumbnail
+      : pickBestThumbnail(item, videoId);
+
   return {
     videoId,
     title: item?.title || item?.name || "Sin título",
-    artist: artist || "Desconocido",
-    thumbnail: pickBestThumbnail(item, videoId),
+    artist: (artist || "Desconocido").toString(),
+    thumbnail: thumb,
     publishedAt: null,
-    duration: typeof item?.duration === "number" ? item.duration : null,
+    duration,
   };
 }
 
