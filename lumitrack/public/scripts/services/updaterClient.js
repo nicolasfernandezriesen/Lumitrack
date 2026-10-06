@@ -6,31 +6,27 @@
 function createBrowserMockApi() {
   let state = {
     status: "available",
-    version: "0.4.0",
-    currentVersion: "0.3.1",
+    version: "0.5.0",
+    currentVersion: "0.4.0",
     progress: null,
     error: null,
     releaseNotes: null,
     highlights: [
       {
-        title: "Modal de actualización",
-        body: "Aviso de nueva versión con highlights, opción de actualizar ahora o más tarde.",
+        title: "Playlist",
+        body: "Reproducción continua con canciones relacionadas y botones anterior/siguiente.",
       },
       {
-        title: "Descarga en segundo plano",
-        body: "Tras confirmar, la actualización se descarga sin interrumpir el uso.",
+        title: "Portadas peek",
+        body: "Vista parcial de la canción anterior y la siguiente detrás de la portada actual.",
       },
       {
-        title: "Modal de instalación",
-        body: "Countdown de 5 segundos y botón para cerrar e instalar de inmediato.",
-      },
-      {
-        title: "Splash",
-        body: "Animación de barras + barra de progreso; se quita la espera forzada de prueba.",
+        title: "Caché dual",
+        body: "URLs de la ventana de playlist y audio en RAM con prefetch de la siguiente pista.",
       },
       {
         title: "Versión",
-        body: "0.3.1 en empaquetado y etiqueta beta de la UI.",
+        body: "0.4.0 en empaquetado y etiqueta beta de la UI.",
       },
     ],
     changelogUrl: "https://github.com/nicolasfernandezriesen/Lumitrack/releases",

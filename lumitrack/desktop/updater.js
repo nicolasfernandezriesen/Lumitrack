@@ -333,16 +333,15 @@ function maybeApplyMockUpdate() {
   if (process.env.LUMITRACK_MOCK_UPDATE !== "1") return;
   if (state.status === "available" || state.status === "downloaded") return;
   applyAvailableUpdate({
-    version: "0.4.0",
+    version: "0.5.0",
     releaseNotes: [
-      "<h2>Lumitrack v0.4.0</h2>",
-      "<p>Modal de actualización y flujo de instalación desde la app.</p>",
+      "<h2>Lumitrack v0.5.0</h2>",
+      "<p>Playlist con canciones relacionadas y controles anterior/siguiente.</p>",
       "<h3>Cambios</h3>",
       "<ul>",
-      "<li><strong>Modal de actualización:</strong> aviso de nueva versión con highlights.</li>",
-      "<li><strong>Descarga en segundo plano:</strong> tras confirmar, sin interrumpir el uso.</li>",
-      "<li><strong>Modal de instalación:</strong> countdown y botón para cerrar e instalar.</li>",
-      "<li><strong>Splash:</strong> animación de barras y barra de progreso.</li>",
+      "<li><strong>Playlist:</strong> reproducción continua con tracks relacionados.</li>",
+      "<li><strong>Portadas peek:</strong> anterior arriba y siguiente abajo detrás de la actual.</li>",
+      "<li><strong>Caché dual:</strong> URLs de ventana de playlist y audio con prefetch.</li>",
       "<li><strong>Versión:</strong> empaquetado y etiqueta beta de la UI.</li>",
       "</ul>",
     ].join("\n"),
