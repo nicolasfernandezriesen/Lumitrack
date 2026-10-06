@@ -13,16 +13,24 @@ function createBrowserMockApi() {
     releaseNotes: null,
     highlights: [
       {
-        title: "Mejoras en rendimiento",
-        body: "Renderizado del visualizador más fluido con menor consumo de GPU y memoria.",
+        title: "Modal de actualización",
+        body: "Aviso de nueva versión con highlights, opción de actualizar ahora o más tarde.",
       },
       {
-        title: "Estabilidad",
-        body: "Correcciones menores y mejor manejo de errores de reproducción.",
+        title: "Descarga en segundo plano",
+        body: "Tras confirmar, la actualización se descarga sin interrumpir el uso.",
       },
       {
-        title: "Actualizaciones",
-        body: "Flujo de instalación más claro desde la propia app.",
+        title: "Modal de instalación",
+        body: "Countdown de 5 segundos y botón para cerrar e instalar de inmediato.",
+      },
+      {
+        title: "Splash",
+        body: "Animación de barras + barra de progreso; se quita la espera forzada de prueba.",
+      },
+      {
+        title: "Versión",
+        body: "0.3.0 en empaquetado y etiqueta beta de la UI.",
       },
     ],
     changelogUrl: "https://github.com/nicolasfernandezriesen/Lumitrack/releases",

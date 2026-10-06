@@ -229,7 +229,90 @@ function normalizeReleaseNotes(notes) {
   return null;
 }
 
-/** Turn release notes into up to 3 highlight cards for the modal. */
+const HIGHLIGHT_SKIP =
+  /^(cambios|changelog|novedades|instalaci[oó]n|installation|release notes|lumitrack(\s+v?\d[\w.-]*)?)$/i;
+
+const MAX_HIGHLIGHTS = 20;
+
+/** Decode common HTML entities without a DOM. */
+function decodeEntities(text) {
+  return String(text)
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCodePoint(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)));
+}
+
+/** Strip tags / markdown noise and normalize whitespace. */
+function toPlainLine(raw) {
+  return decodeEntities(String(raw))
+    .replace(/<[^>]+>/g, "")
+    .replace(/[*_~`]+/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Prefer <li> / markdown bullets (the "Cambios" list). Fall back to plain lines.
+ * GitHub / electron-updater often delivers releaseNotes as HTML.
+ */
+function extractChangeLines(releaseNotes) {
+  const htmlItems = [];
+  const liRe = /<li\b[^>]*>([\s\S]*?)<\/li>/gi;
+  let match;
+  while ((match = liRe.exec(releaseNotes))) {
+    const line = toPlainLine(match[1]);
+    if (line) htmlItems.push(line);
+  }
+  if (htmlItems.length) return htmlItems;
+
+  const withBreaks = releaseNotes
+    .replace(/<\s*br\s*\/?>/gi, "\n")
+    .replace(/<\/\s*(p|div|h[1-6]|li|tr|ul|ol)\s*>/gi, "\n")
+    .replace(/<\s*li\b[^>]*>/gi, "\n- ")
+    .replace(/<[^>]+>/g, "");
+
+  const rawLines = decodeEntities(withBreaks).split(/\r?\n/);
+  const bullets = [];
+  const plain = [];
+
+  for (const raw of rawLines) {
+    const isBullet = /^\s*[-*•]\s+/.test(raw) || /^\s*\d+\.\s+/.test(raw);
+    const line = raw
+      .replace(/^#+\s*/, "")
+      .replace(/^\s*[-*•]\s+/, "")
+      .replace(/^\s*\d+\.\s+/, "")
+      .replace(/[*_~`]+/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (line.length <= 3 || HIGHLIGHT_SKIP.test(line)) continue;
+    if (isBullet) bullets.push(line);
+    else plain.push(line);
+  }
+
+  return bullets.length ? bullets : plain;
+}
+
+function lineToHighlight(line) {
+  const sep = line.indexOf(":");
+  if (sep > 0 && sep < 48) {
+    const title = line.slice(0, sep).trim();
+    const body = line.slice(sep + 1).trim();
+    if (title && body) return { title, body };
+  }
+  const words = line.split(/\s+/);
+  const title = words.slice(0, 5).join(" ");
+  return {
+    title: title.length < line.length ? `${title}…` : title,
+    body: line,
+  };
+}
+
+/** Turn release notes into highlight cards for the modal (all list items when possible). */
 export function buildHighlights(releaseNotes) {
   const fallback = [
     {
@@ -239,28 +322,10 @@ export function buildHighlights(releaseNotes) {
   ];
   if (!releaseNotes) return fallback;
 
-  const lines = releaseNotes
-    .split(/\r?\n/)
-    .map((line) => line.replace(/^#+\s*/, "").replace(/^[-*•]\s+/, "").trim())
-    .filter((line) => line.length > 3);
-
+  const lines = extractChangeLines(releaseNotes).filter((line) => !HIGHLIGHT_SKIP.test(line));
   if (!lines.length) return fallback;
 
-  return lines.slice(0, 3).map((line) => {
-    const sep = line.indexOf(":");
-    if (sep > 0 && sep < 48) {
-      return {
-        title: line.slice(0, sep).trim(),
-        body: line.slice(sep + 1).trim() || line,
-      };
-    }
-    const words = line.split(/\s+/);
-    const title = words.slice(0, 5).join(" ");
-    return {
-      title: title.length < line.length ? `${title}…` : title,
-      body: line,
-    };
-  });
+  return lines.slice(0, MAX_HIGHLIGHTS).map(lineToHighlight);
 }
 
 function maybeApplyMockUpdate() {
@@ -270,9 +335,16 @@ function maybeApplyMockUpdate() {
   applyAvailableUpdate({
     version: "0.4.0",
     releaseNotes: [
-      "Mejoras en rendimiento: Renderizado del visualizador más fluido con menor consumo.",
-      "Estabilidad: Correcciones menores y mejor manejo de errores de reproducción.",
-      "Actualizaciones: Flujo de instalación más claro desde la propia app.",
+      "<h2>Lumitrack v0.4.0</h2>",
+      "<p>Modal de actualización y flujo de instalación desde la app.</p>",
+      "<h3>Cambios</h3>",
+      "<ul>",
+      "<li><strong>Modal de actualización:</strong> aviso de nueva versión con highlights.</li>",
+      "<li><strong>Descarga en segundo plano:</strong> tras confirmar, sin interrumpir el uso.</li>",
+      "<li><strong>Modal de instalación:</strong> countdown y botón para cerrar e instalar.</li>",
+      "<li><strong>Splash:</strong> animación de barras y barra de progreso.</li>",
+      "<li><strong>Versión:</strong> empaquetado y etiqueta beta de la UI.</li>",
+      "</ul>",
     ].join("\n"),
   });
 }

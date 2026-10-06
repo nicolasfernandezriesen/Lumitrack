@@ -65,12 +65,14 @@ export function createUpdaterModal({ rootEl, api }) {
     clearCountdown();
     const version = state.version || "—";
     const current = state.currentVersion || "—";
-    const highlights = (state.highlights?.length ? state.highlights : [
-      {
-        title: "Novedades de esta versión",
-        body: "Mejoras y correcciones listas para instalar.",
-      },
-    ]).slice(0, 3);
+    const highlights = state.highlights?.length
+      ? state.highlights
+      : [
+          {
+            title: "Novedades de esta versión",
+            body: "Mejoras y correcciones listas para instalar.",
+          },
+        ];
 
     bodyEl.innerHTML = `
       <div class="updater-version-row">
