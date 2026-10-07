@@ -67,7 +67,7 @@ export function createPlayerControls({
     knownDuration = duration;
 
     const remaining = Math.max(0, duration - currentTime);
-    timeRemainingEl.textContent = "-" + formatTime(remaining);
+    timeRemainingEl.textContent = `${formatTime(duration)}/-${formatTime(remaining)}`;
 
     const pct = Math.min(100, Math.max(0, (currentTime / duration) * 100));
     progressFillEl.style.width = pct + "%";
@@ -75,7 +75,7 @@ export function createPlayerControls({
 
   function resetProgress() {
     knownDuration = 0;
-    timeRemainingEl.textContent = "-0:00";
+    timeRemainingEl.textContent = "0:00/-0:00";
     progressFillEl.style.width = "0%";
   }
 

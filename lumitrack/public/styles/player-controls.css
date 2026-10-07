@@ -3,9 +3,9 @@
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(12, 12, 18, 0.85);
-  color: var(--fg);
+  border: 1px solid rgba(var(--glow), 0.45);
+  background: rgba(var(--glow), 0.55);
+  color: #fff;
   font-size: 0.85rem;
   line-height: 1;
   cursor: pointer;
@@ -13,12 +13,14 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  transition: background 0.15s ease, transform 0.1s ease, opacity 0.15s ease;
+  box-shadow: 0 0 14px rgba(var(--glow), 0.35);
+  transition: background 0.15s ease, transform 0.1s ease, opacity 0.15s ease, box-shadow 0.15s ease;
 }
 
 #prev-track:hover,
 #next-track:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(var(--glow), 0.72);
+  box-shadow: 0 0 20px rgba(var(--glow), 0.5);
 }
 
 #prev-track:active,
@@ -61,7 +63,7 @@
 
 #progress-track {
   flex: 1 1 auto;
-  min-width: 0;
+  min-width: 96px;
   height: 24px;
   display: flex;
   align-items: center;
@@ -80,15 +82,16 @@
 #progress-fill {
   height: 100%;
   width: 0%;
-  background: var(--accent);
+  background: var(--fg);
   transition: width 120ms linear;
 }
 
 #time-remaining {
-  color: var(--accent-2);
+  color: var(--fg);
   font-size: 0.78rem;
   font-variant-numeric: tabular-nums;
   flex-shrink: 0;
+  line-height: 24px;
 }
 
 #volume-control {
@@ -101,7 +104,7 @@
 #fullscreen-toggle {
   border: 0;
   background: transparent;
-  color: var(--accent);
+  color: var(--fg);
   cursor: pointer;
   font-size: 1.1rem;
   line-height: 1;
@@ -130,7 +133,7 @@
 }
 
 .vc-waves {
-  stroke: var(--accent-2);
+  stroke: var(--fg);
 }
 
 .vc-x {

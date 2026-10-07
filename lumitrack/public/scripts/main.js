@@ -1,6 +1,7 @@
 import { createAudioEngine, PlaybackState } from "./services/audioEngine.js";
 import { extractDominantColor, complementary } from "./services/colorExtractor.js";
 import { createPlaylistController } from "./services/playlist.js";
+import { createMediaKeys } from "./services/mediaKeys.js";
 import { createVisualizer } from "./views/visualizer.js";
 import { createSearchPanel } from "./views/searchPanel.js";
 import { createNowPlaying } from "./views/nowPlaying.js";
@@ -89,17 +90,37 @@ function main() {
     onMuteChange: (muted, volume) => audioEngine.setVolume(volume, muted),
   });
 
+  const mediaKeys = createMediaKeys({
+    onPlay: () => handleMediaPlay(),
+    onPause: () => handleMediaPause(),
+    onPlayPause: () => handlePlayButtonClick(audioEngine.currentState()),
+    onPreviousTrack: () => {
+      void handlePrevClick();
+    },
+    onNextTrack: () => {
+      void handleNextClick();
+    },
+    onStop: () => handleMediaPause(),
+  });
+
   const audioEngine = createAudioEngine({
     barCount: BAR_COUNT,
     onError: (message) => searchPanel.setStatus(message),
     onStateChange: (state) => {
       playerControls.setState(state);
+      mediaKeys.setPlaybackState(state);
       syncDocumentTitle(state);
       if (state === PlaybackState.ENDED) {
         void handleTrackEnded();
       }
     },
-    onProgress: playerControls.setProgress,
+    onProgress: (progress) => {
+      playerControls.setProgress(progress);
+      mediaKeys.setPositionState({
+        duration: progress.duration,
+        position: progress.currentTime,
+      });
+    },
   });
 
   playlist.subscribe((snap) => {
@@ -122,6 +143,11 @@ function main() {
     currentTrackTitle = track.title?.trim() || "";
     syncDocumentTitle(PlaybackState.PLAYING);
     nowPlaying.show(track);
+    mediaKeys.setMetadata({
+      title: track.title || "",
+      artist: track.artist || "",
+      artworkUrl: track.thumbnail || "",
+    });
     nowPlaying.setLoading(true);
     playerControls.resetProgress();
 
@@ -130,6 +156,7 @@ function main() {
     } catch (err) {
       console.error("No se pudo reproducir:", err);
       currentTrackTitle = "";
+      mediaKeys.clear();
       syncDocumentTitle(PlaybackState.IDLE);
       searchPanel.setStatus("No se pudo reproducir este track.");
     } finally {
@@ -205,6 +232,21 @@ function main() {
     }
   }
 
+  function handleMediaPlay() {
+    const state = audioEngine.currentState();
+    if (state === PlaybackState.PAUSED) {
+      audioEngine.resume();
+    } else if (state === PlaybackState.ENDED) {
+      audioEngine.replay();
+    }
+  }
+
+  function handleMediaPause() {
+    if (audioEngine.currentState() === PlaybackState.PLAYING) {
+      audioEngine.pause();
+    }
+  }
+
   const updaterModal = createUpdaterModal({
     rootEl: document.body,
     api: getUpdaterApi(),
@@ -214,6 +256,7 @@ function main() {
   playerControls.init();
   volumeControl.init();
   fullscreenToggle.init();
+  mediaKeys.init();
   updaterModal.init();
 }
 

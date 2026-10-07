@@ -49,6 +49,11 @@ export function createAudioEngine({ barCount, onError, onStateChange, onProgress
 
     audioEl = new Audio();
     audioEl.crossOrigin = "anonymous";
+    audioEl.setAttribute("playsinline", "");
+    audioEl.preload = "auto";
+    // Mantener el elemento en el DOM mejora la integración con Media Session / teclas multimedia.
+    audioEl.hidden = true;
+    document.body.appendChild(audioEl);
     const source = audioCtx.createMediaElementSource(audioEl);
     source.connect(analyser);
     gainNode = audioCtx.createGain();
