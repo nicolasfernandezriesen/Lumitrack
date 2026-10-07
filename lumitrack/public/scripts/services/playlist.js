@@ -2,7 +2,7 @@ import { fetchRelatedTracks, syncPlaylistWindow } from "./searchApi.js";
 
 const MAX_HISTORY = 3;
 const MAX_UPCOMING = 6;
-const RELATED_BATCH = 12;
+const WINDOW_SYNC_DEBOUNCE_MS = 180;
 
 /**
  * Estado de playlist en el cliente: historial + cola de similares.
@@ -15,6 +15,8 @@ export function createPlaylistController() {
   /** @type {object[]} */
   let upcoming = [];
   let refillToken = 0;
+  let syncTimer = null;
+  let syncToken = 0;
   /** @type {((snapshot: object) => void) | null} */
   let onChange = null;
 
@@ -30,20 +32,40 @@ export function createPlaylistController() {
     };
   }
 
-  function emit() {
+  /** @param {{ urgent?: boolean }} [opts] urgent = cambio de pista (prefetch inmediato). */
+  function emit({ urgent = false } = {}) {
     onChange?.(snapshot());
-    void pushWindow();
+    if (urgent) {
+      if (syncTimer) {
+        clearTimeout(syncTimer);
+        syncTimer = null;
+      }
+      void pushWindow();
+      return;
+    }
+    schedulePushWindow();
+  }
+
+  function schedulePushWindow() {
+    if (syncTimer) clearTimeout(syncTimer);
+    syncTimer = setTimeout(() => {
+      syncTimer = null;
+      void pushWindow();
+    }, WINDOW_SYNC_DEBOUNCE_MS);
   }
 
   async function pushWindow() {
     if (!current) return;
+    const token = ++syncToken;
+    const payload = {
+      current: current.videoId,
+      history: history.slice(0, 3).map((t) => t.videoId),
+      upcoming: upcoming.slice(0, 3).map((t) => t.videoId),
+    };
     try {
-      await syncPlaylistWindow({
-        current: current.videoId,
-        history: history.slice(0, 3).map((t) => t.videoId),
-        upcoming: upcoming.slice(0, 3).map((t) => t.videoId),
-      });
+      await syncPlaylistWindow(payload);
     } catch (err) {
+      if (token !== syncToken) return;
       console.warn("No se pudo sincronizar la ventana de playlist:", err);
     }
   }
@@ -100,7 +122,7 @@ export function createPlaylistController() {
     }
 
     current = track;
-    emit();
+    emit({ urgent: true });
     await refillUpcoming(track);
     return snapshot();
   }
@@ -123,14 +145,14 @@ export function createPlaylistController() {
       if (!retry) return null;
       history = [current, ...history.filter((t) => t.videoId !== current.videoId)].slice(0, MAX_HISTORY);
       current = retry;
-      emit();
+      emit({ urgent: true });
       if (upcoming.length < 3) void refillUpcoming(current);
       return current;
     }
 
     history = [current, ...history.filter((t) => t.videoId !== current.videoId)].slice(0, MAX_HISTORY);
     current = next;
-    emit();
+    emit({ urgent: true });
     if (upcoming.length < 3) void refillUpcoming(current);
     return current;
   }
@@ -141,7 +163,7 @@ export function createPlaylistController() {
     const prev = history.shift();
     upcoming = [current, ...upcoming.filter((t) => t.videoId !== current.videoId)].slice(0, MAX_UPCOMING);
     current = prev;
-    emit();
+    emit({ urgent: true });
     return current;
   }
 

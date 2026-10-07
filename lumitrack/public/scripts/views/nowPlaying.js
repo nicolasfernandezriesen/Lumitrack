@@ -1,3 +1,8 @@
+/** Hosts donde una carga con CORS ya funcionó (evita reintentos innecesarios). */
+const corsOkHosts = new Set();
+/** Hosts donde CORS falló: ir directo sin crossOrigin. */
+const corsBadHosts = new Set();
+
 function coverCandidates(track) {
   const candidates = [];
   if (!track) return candidates;
@@ -9,6 +14,56 @@ function coverCandidates(track) {
   return candidates;
 }
 
+function hostOf(url) {
+  try {
+    return new URL(url, location.href).host;
+  } catch {
+    return "";
+  }
+}
+
+function preferredCors(url) {
+  const host = hostOf(url);
+  if (host && corsBadHosts.has(host)) return false;
+  if (host && corsOkHosts.has(host)) return true;
+  return true;
+}
+
+function rememberCors(url, ok) {
+  const host = hostOf(url);
+  if (!host) return;
+  if (ok) {
+    corsOkHosts.add(host);
+    corsBadHosts.delete(host);
+  } else {
+    corsBadHosts.add(host);
+    corsOkHosts.delete(host);
+  }
+}
+
+function assignSrc(imgEl, url, withCors) {
+  if (withCors) {
+    imgEl.crossOrigin = "anonymous";
+  } else {
+    imgEl.removeAttribute("crossorigin");
+  }
+
+  // Evita resetear src si la URL y el modo CORS ya coinciden.
+  const sameUrl = imgEl.getAttribute("src") === url;
+  const hasCors = imgEl.crossOrigin === "anonymous";
+  if (sameUrl && hasCors === withCors && imgEl.complete && imgEl.naturalWidth > 0) {
+    return false;
+  }
+
+  if (!sameUrl) {
+    imgEl.src = url;
+  } else if (hasCors !== withCors) {
+    imgEl.src = "";
+    imgEl.src = url;
+  }
+  return true;
+}
+
 function loadImageInto(imgEl, track, generation, getGeneration) {
   const candidates = coverCandidates(track);
   if (!candidates.length) {
@@ -18,7 +73,8 @@ function loadImageInto(imgEl, track, generation, getGeneration) {
   }
 
   imgEl.hidden = false;
-  tryLoad(imgEl, candidates, 0, true, generation, getGeneration);
+  const firstCors = preferredCors(candidates[0]);
+  tryLoad(imgEl, candidates, 0, firstCors, generation, getGeneration);
 }
 
 function tryLoad(imgEl, candidates, index, withCors, generation, getGeneration) {
@@ -32,24 +88,21 @@ function tryLoad(imgEl, candidates, index, withCors, generation, getGeneration) 
 
   const url = candidates[index];
 
-  imgEl.onload = () => {};
+  imgEl.onload = () => {
+    if (generation !== getGeneration()) return;
+    if (withCors) rememberCors(url, true);
+  };
   imgEl.onerror = () => {
     if (generation !== getGeneration()) return;
     if (withCors) {
+      rememberCors(url, false);
       tryLoad(imgEl, candidates, index, false, generation, getGeneration);
       return;
     }
-    tryLoad(imgEl, candidates, index + 1, true, generation, getGeneration);
+    tryLoad(imgEl, candidates, index + 1, preferredCors(candidates[index + 1] || ""), generation, getGeneration);
   };
 
-  if (withCors) {
-    imgEl.crossOrigin = "anonymous";
-  } else {
-    imgEl.removeAttribute("crossorigin");
-  }
-
-  imgEl.src = "";
-  imgEl.src = url;
+  assignSrc(imgEl, url, withCors);
 }
 
 export function createNowPlaying({
@@ -64,6 +117,8 @@ export function createNowPlaying({
   let onReadyCallback = null;
   let loadGeneration = 0;
   let peekGeneration = 0;
+  let lastPrevId = null;
+  let lastNextId = null;
 
   function show(track) {
     titleEl.textContent = track.title;
@@ -74,6 +129,12 @@ export function createNowPlaying({
   }
 
   function setNeighbors({ previous = null, next = null } = {}) {
+    const prevId = previous?.videoId || null;
+    const nextId = next?.videoId || null;
+    if (prevId === lastPrevId && nextId === lastNextId) return;
+    lastPrevId = prevId;
+    lastNextId = nextId;
+
     const generation = ++peekGeneration;
     const getGeneration = () => peekGeneration;
 
@@ -119,7 +180,7 @@ export function createNowPlaying({
       return;
     }
 
-    tryLoadCandidate(candidates, 0, true, generation);
+    tryLoadCandidate(candidates, 0, preferredCors(candidates[0]), generation);
   }
 
   function tryLoadCandidate(candidates, index, withCors, generation) {
@@ -129,26 +190,25 @@ export function createNowPlaying({
 
     coverEl.onload = () => {
       if (generation !== loadGeneration) return;
+      if (withCors) rememberCors(url, true);
       if (onReadyCallback) onReadyCallback(coverEl);
     };
 
     coverEl.onerror = () => {
       if (generation !== loadGeneration) return;
       if (withCors) {
+        rememberCors(url, false);
         tryLoadCandidate(candidates, index, false, generation);
         return;
       }
-      tryLoadCandidate(candidates, index + 1, true, generation);
+      tryLoadCandidate(candidates, index + 1, preferredCors(candidates[index + 1] || ""), generation);
     };
 
-    if (withCors) {
-      coverEl.crossOrigin = "anonymous";
-    } else {
-      coverEl.removeAttribute("crossorigin");
+    const started = assignSrc(coverEl, url, withCors);
+    // Si ya estaba cargada la misma URL con CORS, dispara el callback.
+    if (!started && withCors && coverEl.complete && coverEl.naturalWidth > 0) {
+      if (onReadyCallback) onReadyCallback(coverEl);
     }
-
-    coverEl.src = "";
-    coverEl.src = url;
   }
 
   /** Registra el callback que corre cuando la portada está lista (extracción de color). */

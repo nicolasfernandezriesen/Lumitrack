@@ -36,17 +36,24 @@ export function prefetch(videoIds) {
 /**
  * Actualiza la ventana de playlist (URLs: 3 atrás + 3 adelante + actual)
  * y encola la resolución de las que falten.
+ * Prioriza actual + siguiente (upcoming[0]) al frente de la cola.
  */
 export function setPlaylistWindow({ current = null, history = [], upcoming = [] } = {}) {
   playlistUrlCache.setWindow({ current, history, upcoming });
   const ids = playlistUrlCache.windowIds();
   if (!ids.length) return;
 
+  const priority = [];
+  if (current && VIDEO_ID_RE.test(current)) priority.push(current);
+  const nextId = Array.isArray(upcoming) ? upcoming[0] : null;
+  if (nextId && VIDEO_ID_RE.test(nextId) && nextId !== current) priority.push(nextId);
+
   deferPump = true;
-  for (const id of ids) {
-    if (urlCache.get(id) || jobs.has(id) || queue.includes(id)) continue;
-    queue.push(id);
-  }
+  const missing = ids.filter((id) => !urlCache.get(id) && !jobs.has(id));
+  const priorityMissing = priority.filter((id) => missing.includes(id));
+  const restMissing = missing.filter((id) => !priorityMissing.includes(id));
+  // Reordena: prioridad primero, luego el resto; deduplica con lo ya encolado.
+  queue = uniqueIds([...priorityMissing, ...queue.filter((id) => missing.includes(id)), ...restMissing]);
   deferPump = false;
   pump();
 }

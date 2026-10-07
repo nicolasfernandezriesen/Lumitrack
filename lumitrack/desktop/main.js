@@ -34,8 +34,6 @@ async function boot() {
   Menu.setApplicationMenu(null);
   app.setAppUserModelId("app.lumitrack.desktop");
   bindUpdaterIpc();
-  // Check for updates as soon as the splash is up (packaged builds only).
-  startBackgroundUpdateCheck();
 
   const binaries = binDir();
   process.env.LUMITRACK_BIN_DIR = binaries;
@@ -84,6 +82,8 @@ async function boot() {
       splashApi.completeProgress();
       if (!splash.isDestroyed()) splash.close();
       mainWindow.show();
+      // Tras mostrar la UI: evita competir con setup/server en el cold start.
+      startBackgroundUpdateCheck();
     });
     await mainWindow.loadURL(started.url);
   } catch (err) {

@@ -26,18 +26,37 @@ export function createAudioEngine({ barCount, onError, onStateChange, onProgress
   // Invalida operaciones async que quedaron obsoletas al cambiar de canción.
   let loadToken = 0;
   let currentVideoId = null;
-  let seekableFromCache = false;
+  /** Caché RAM lista; el seek completo puede requerir un rebind único. */
+  let cacheReady = false;
+  /** Ya se hizo rebind al stream cacheado (Accept-Ranges). */
+  let reboundFromCache = false;
   let cacheWatchTimer = null;
   let volume = 1;
   let muted = false;
+  let levelsBuf = new Array(barCount);
+  let visibilityBound = false;
 
   function setState(next) {
     state = next;
     onStateChange?.(state);
   }
 
+  function ensureVisibilityHook() {
+    if (visibilityBound) return;
+    visibilityBound = true;
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) {
+        stopVisualLoop({ resetBars: false });
+        return;
+      }
+      if (state === PlaybackState.PLAYING) startVisualLoop();
+    });
+  }
+
   function ensureGraph() {
     if (audioCtx) return;
+
+    ensureVisibilityHook();
 
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     analyser = audioCtx.createAnalyser();
@@ -109,26 +128,37 @@ export function createAudioEngine({ barCount, onError, onStateChange, onProgress
 
   function frequencyLevels() {
     analyser.getByteFrequencyData(dataArray);
-    const levels = new Array(barCount);
     for (let i = 0; i < barCount; i++) {
       const { start, end } = barRanges[i];
       let sum = 0;
       for (let j = start; j < end; j++) sum += dataArray[j];
       const avg = sum / (end - start);
-      levels[i] = muted ? 3 : Math.max(3, (avg / 255) * 100 * volume);
+      levelsBuf[i] = muted ? 3 : Math.max(3, (avg / 255) * 100 * volume);
     }
-    return levels;
+    return levelsBuf;
   }
 
-  function visualLoop() {
-    rafId = requestAnimationFrame(visualLoop);
-    onFrame?.(frequencyLevels());
+  function startVisualLoop() {
+    if (document.hidden || state !== PlaybackState.PLAYING) return;
+    if (rafId) return;
+    const tick = () => {
+      if (state !== PlaybackState.PLAYING || document.hidden) {
+        rafId = null;
+        return;
+      }
+      rafId = requestAnimationFrame(tick);
+      onFrame?.(frequencyLevels());
+    };
+    rafId = requestAnimationFrame(tick);
   }
 
-  function stopVisualLoop() {
+  function stopVisualLoop({ resetBars = true } = {}) {
     if (rafId) cancelAnimationFrame(rafId);
     rafId = null;
-    onFrame?.(new Array(barCount).fill(3));
+    if (resetBars) {
+      levelsBuf.fill(3);
+      onFrame?.(levelsBuf);
+    }
   }
 
   function stopCacheWatch() {
@@ -138,7 +168,7 @@ export function createAudioEngine({ barCount, onError, onStateChange, onProgress
     }
   }
 
-  // Al completar la caché RAM, recarga el stream para habilitar seek.
+  /** Marca caché lista sin rebind: evita re-descargar el audio en reproducción normal. */
   function startCacheWatch(videoId, token) {
     stopCacheWatch();
     cacheWatchTimer = setInterval(async () => {
@@ -146,7 +176,7 @@ export function createAudioEngine({ barCount, onError, onStateChange, onProgress
         stopCacheWatch();
         return;
       }
-      if (seekableFromCache) {
+      if (cacheReady) {
         stopCacheWatch();
         return;
       }
@@ -154,11 +184,23 @@ export function createAudioEngine({ barCount, onError, onStateChange, onProgress
         const ready = await isTrackCached(videoId);
         if (token !== loadToken || videoId !== currentVideoId) return;
         if (ready) {
+          cacheReady = true;
           stopCacheWatch();
-          await rebindFromCache(audioEl?.currentTime || 0, { resume: state === PlaybackState.PLAYING });
         }
       } catch {}
     }, CACHE_POLL_MS);
+  }
+
+  function canSeekLocally(seconds) {
+    if (!audioEl || !Number.isFinite(seconds)) return false;
+    if (reboundFromCache && Number.isFinite(audioEl.duration)) {
+      return seconds >= 0 && seconds <= audioEl.duration;
+    }
+    const buffered = audioEl.buffered;
+    for (let i = 0; i < buffered.length; i++) {
+      if (seconds >= buffered.start(i) && seconds <= buffered.end(i)) return true;
+    }
+    return false;
   }
 
   // AbortError es normal si otra canción reemplaza la carga en curso.
@@ -172,7 +214,7 @@ export function createAudioEngine({ barCount, onError, onStateChange, onProgress
     }
   }
 
-  // Rebind desde caché para habilitar seek mediante Range.
+  // Rebind desde caché (o parcial con Range) para habilitar seek completo.
   async function rebindFromCache(seconds, { resume } = {}) {
     if (!audioEl || !currentVideoId) return false;
     const token = loadToken;
@@ -197,14 +239,15 @@ export function createAudioEngine({ barCount, onError, onStateChange, onProgress
     if (Number.isFinite(audioEl.duration)) {
       audioEl.currentTime = Math.min(Math.max(0, seconds), audioEl.duration);
     }
-    seekableFromCache = true;
+    cacheReady = true;
+    reboundFromCache = true;
 
     if (shouldResume) {
       if (audioCtx.state === "suspended") await audioCtx.resume();
       const started = await safePlay();
       if (token !== loadToken || !started) return false;
-      if (!rafId) visualLoop();
       setState(PlaybackState.PLAYING);
+      startVisualLoop();
     }
 
     emitProgress();
@@ -216,8 +259,10 @@ export function createAudioEngine({ barCount, onError, onStateChange, onProgress
     const myToken = ++loadToken;
     onFrame = onLevels;
     currentVideoId = videoId;
-    seekableFromCache = false;
+    cacheReady = false;
+    reboundFromCache = false;
     stopCacheWatch();
+    stopVisualLoop({ resetBars: false });
 
     const cacheCheck = isTrackCached(videoId).catch(() => false);
 
@@ -231,10 +276,13 @@ export function createAudioEngine({ barCount, onError, onStateChange, onProgress
     if (myToken !== loadToken) return;
 
     if (started) {
-      if (alreadyCached) seekableFromCache = true;
-      visualLoop();
+      if (alreadyCached) {
+        cacheReady = true;
+        reboundFromCache = true;
+      }
       setState(PlaybackState.PLAYING);
-      if (!seekableFromCache) startCacheWatch(videoId, myToken);
+      startVisualLoop();
+      if (!cacheReady) startCacheWatch(videoId, myToken);
     }
   }
 
@@ -252,8 +300,8 @@ export function createAudioEngine({ barCount, onError, onStateChange, onProgress
     const started = await safePlay();
 
     if (myToken !== loadToken || !started) return;
-    visualLoop();
     setState(PlaybackState.PLAYING);
+    startVisualLoop();
   }
 
   async function replay() {
@@ -264,29 +312,41 @@ export function createAudioEngine({ barCount, onError, onStateChange, onProgress
     const started = await safePlay();
 
     if (myToken !== loadToken || !started) return;
-    visualLoop();
     setState(PlaybackState.PLAYING);
+    startVisualLoop();
   }
 
-  // Espera la caché si el stream en vivo todavía no soporta Range.
+  // Seek local si hay buffer; si no, espera caché y hace un único rebind.
   async function seek(seconds) {
     if (!audioEl || !currentVideoId) return;
     const token = loadToken;
+    const target = Number(seconds);
+    if (!Number.isFinite(target)) return;
 
-    if (seekableFromCache && Number.isFinite(audioEl.duration)) {
-      audioEl.currentTime = Math.min(Math.max(0, seconds), audioEl.duration);
+    if (canSeekLocally(target)) {
+      audioEl.currentTime = Math.max(0, target);
       return;
     }
 
-    let ready = false;
-    try {
-      ready = await waitUntilTrackCached(currentVideoId);
-    } catch {
-      ready = false;
+    if (!cacheReady) {
+      let ready = false;
+      try {
+        ready = await waitUntilTrackCached(currentVideoId);
+      } catch {
+        ready = false;
+      }
+      if (token !== loadToken || !ready) return;
+      cacheReady = true;
     }
-    if (token !== loadToken || !ready) return;
 
-    await rebindFromCache(seconds, { resume: state !== PlaybackState.PAUSED });
+    if (token !== loadToken) return;
+
+    if (reboundFromCache && Number.isFinite(audioEl.duration)) {
+      audioEl.currentTime = Math.min(Math.max(0, target), audioEl.duration);
+      return;
+    }
+
+    await rebindFromCache(target, { resume: state !== PlaybackState.PAUSED });
   }
 
   function currentState() {
@@ -301,7 +361,10 @@ export function createAudioEngine({ barCount, onError, onStateChange, onProgress
     volume = Math.min(1, Math.max(0, Number(nextVolume) || 0));
     muted = Boolean(nextMuted);
     if (gainNode) gainNode.gain.value = muted ? 0 : volume;
-    if (muted) onFrame?.(new Array(barCount).fill(3));
+    if (muted) {
+      levelsBuf.fill(3);
+      onFrame?.(levelsBuf);
+    }
   }
 
   return { play, pause, resume, replay, seek, currentState, getCurrentTime, setVolume };
