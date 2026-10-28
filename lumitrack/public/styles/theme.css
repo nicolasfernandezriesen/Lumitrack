@@ -32,6 +32,8 @@
   --accent: #7c8cff;
   --accent-2: #ff6b6b;
   --glow: 88, 108, 255;
+  --app-background: radial-gradient(circle at 18% 82%, rgba(var(--glow), 0.35), transparent 55%),
+    radial-gradient(circle at 85% 15%, rgba(var(--glow), 0.18), transparent 60%), var(--bg);
 }
 
 * {

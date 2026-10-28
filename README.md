@@ -52,8 +52,8 @@ normal.
 
 El ícono de la app y del setup está en `installer/build/icon.ico`.
 La app instalada puede chequear actualizaciones en segundo plano contra
-GitHub Releases; la instalación de la update queda a confirmación del
-usuario (modal de UI pendiente).
+GitHub Releases; muestra un modal con la versión disponible y espera la
+confirmación del usuario antes de descargarla e instalarla.
 
 yt-dlp y ffmpeg van dentro del instalador y, al primer arranque, se copian
 a `%APPDATA%\Lumitrack\bin`. Esa carpeta es la `userData` de Electron
@@ -109,8 +109,8 @@ Lumitrack/
     ├── server/
     │   ├── index.js                 → Express; startServer() escucha en 127.0.0.1
     │   ├── routes/                  → capa HTTP, sin lógica propia
-    │   │   ├── searchRoutes.js        (GET /api/search)
-    │   │   └── streamRoutes.js        (stream y estado de la caché)
+    │   │   ├── searchRoutes.js        (búsqueda y canciones relacionadas)
+    │   │   └── streamRoutes.js        (audio, caché y ventana de playlist)
     │   ├── services/
     │   │   ├── searchService.js       búsqueda en YouTube Music vía ytmusic-api
     │   │   ├── directUrlService.js    resuelve la URL del CDN antes del clic
@@ -119,7 +119,8 @@ Lumitrack/
     │       ├── binaries.js            rutas a yt-dlp/ffmpeg
     │       ├── youtubeAudio.js        formato y vencimiento de la URL directa
     │       ├── streamUrlCache.js      URLs del CDN ya resueltas
-    │       └── audioCache.js          caché en RAM de la última canción
+    │       ├── playlistUrlCache.js    URLs de la ventana de playlist
+    │       └── audioCache.js          audio en RAM: actual, historial y siguiente
     │
     └── public/
         ├── index.html
@@ -130,12 +131,14 @@ Lumitrack/
             ├── services/
             │   ├── audioEngine.js
             │   ├── colorExtractor.js
-            │   └── searchApi.js         cliente de /api/search, /api/stream y /api/cached
+            │   ├── playlist.js          historial, cola y canciones relacionadas
+            │   └── searchApi.js         cliente de búsqueda, playlist y streaming
             └── views/
                 ├── visualizer.js
                 ├── searchPanel.js
                 ├── nowPlaying.js
                 ├── playerControls.js
+                ├── playlistView.js
                 ├── volumeControl.js
                 └── fullscreenToggle.js
 ```
@@ -149,25 +152,36 @@ nada de Express.
 - **Búsqueda:** `GET /api/search?q=texto` → busca en YouTube Music vía
   el paquete npm `ytmusic-api` (cliente Innertube no oficial, instalado
   solo en `node_modules` del proyecto). Devuelve título, artista,
-  portada y duración de hasta 12 resultados, ya filtrados a canciones.
-- **Streaming de audio:** al devolver una búsqueda, el servidor pide
-  en segundo plano (a lo sumo dos `yt-dlp` a la vez) la URL directa del
-  audio de cada resultado y la guarda hasta que vence. `GET /api/stream/:videoId`
-  sirve primero la canción cacheada en RAM (ver más abajo), con `Range`
-  para saltar sin re-descargar. Si no está, pero la URL ya se resolvió,
-  reenvía el audio del CDN a medida que llega. Si todavía no hay URL, o
-  el CDN la rechaza, yt-dlp extrae y pipea el audio como antes. En ambos
-  casos los bytes se juntan en paralelo y, si la descarga termina bien,
-  esa canción queda cacheada. Cambiar de canción corta la descarga en
-  curso; una descarga a medias no se cachea.
-- **Caché en RAM:** `infrastructure/audioCache.js` guarda un único slot
-  en memoria del proceso — la última canción reproducida completa. Vive
-  solo mientras la app está corriendo: no toca disco, y se pierde por
-  completo al cerrarla. Pedir la misma canción de nuevo (repetir,
-  volver atrás) la sirve al instante desde RAM en vez de re-invocar
-  yt-dlp; cambiar a una canción distinta reemplaza ese único slot.
-  El frontend lo consulta con `GET /api/cached/:videoId` y, si la
-  descarga sigue en curso, con `GET /api/cached/:videoId/wait`.
+  portada y duración de hasta 12 resultados. Al responder, el servidor
+  empieza a resolver en segundo plano las URLs directas de audio de los
+  resultados.
+- **URLs de audio:** `directUrlService.js` resuelve las URLs del CDN
+  mediante yt-dlp y limita a dos las resoluciones simultáneas. Las URLs
+  vencen, así que la caché solo evita volver a resolverlas mientras
+  sigan vigentes. Al sincronizar la playlist, la canción actual y la
+  primera próxima se priorizan sobre las demás pistas pendientes.
+- **Streaming y caché de audio:** `GET /api/stream/:videoId` sirve
+  primero el audio completo que ya esté en RAM. Si no está cacheado,
+  reenvía el audio del CDN a medida que llega; si aún no hay una URL
+  válida o el CDN falla, usa yt-dlp como alternativa. El audio se
+  acumula en paralelo y solo se conserva cuando la descarga termina
+  correctamente. Las respuestas cacheadas admiten `Range`, lo que
+  permite buscar posiciones de la pista sin volver a descargarla. El
+  frontend consulta el estado con `GET /api/cached/:videoId` y puede
+  esperar a que termine una descarga con `GET /api/cached/:videoId/wait`.
+- **Prefetch de audio:** cuando hay una pista siguiente, el servidor la
+  descarga en segundo plano para dejarla lista en RAM. Puede empezar
+  cuando ya se recibieron 256 KiB de la pista actual; si la actual ya
+  estaba cacheada, puede empezar enseguida. Si cambia la siguiente, se
+  cancela el prefetch anterior. Al reproducirla se reutiliza la descarga
+  o la caché existente en vez de iniciar una segunda.
+- **Cachés en RAM:** `audioCache.js` mantiene la pista actual, hasta dos
+  pistas del historial reciente y una siguiente prefetched; se descartan
+  las entradas que salen de esa ventana. `playlistUrlCache.js` conserva
+  las URLs vigentes de la actual, hasta dos pistas del historial y
+  hasta veinte próximas. Ambas viven solo mientras corre el proceso: no
+  persisten en disco y se vacían al cerrar la app. La caché general de
+  URLs resueltas tiene un límite separado de 24 entradas.
 - **Binarios:** `infrastructure/binaries.js` busca primero yt-dlp y
   ffmpeg en la carpeta de binarios (en desarrollo `lumitrack/bin/`; en
   la app instalada `%APPDATA%\Lumitrack\bin`) y, si no están, cae al
@@ -178,11 +192,11 @@ nada de Express.
 **Frontend — flujo de una interacción:** `main.js` es el único archivo
 que conoce tanto a `services/` como a `views/`; los conecta pero no
 contiene lógica propia. Los módulos de `services/` (`audioEngine.js`,
-`colorExtractor.js`, `searchApi.js`) no tocan el DOM. Los módulos de
-`views/` (`visualizer`, `searchPanel`, `nowPlaying`, `playerControls`,
-`volumeControl`, `fullscreenToggle`) sí tocan el DOM, pero no hacen
-fetch ni usan Web Audio directamente — reciben datos ya procesados y
-los pintan.
+`colorExtractor.js`, `searchApi.js`, `playlist.js`) no tocan el DOM. Los
+módulos de `views/` (`visualizer`, `searchPanel`, `nowPlaying`,
+`playerControls`, `playlistView`, `volumeControl`, `fullscreenToggle`)
+sí tocan el DOM, pero no hacen fetch ni usan Web Audio directamente —
+reciben datos ya procesados y los pintan.
 
 - **Visualización:** `audioEngine.js` conecta el `<audio>` a un
   `AnalyserNode`, hace FFT del audio en tiempo real, y entrega niveles ya
@@ -194,6 +208,23 @@ los pintan.
   ícono y tooltip cambian según el estado, más el timer y la barra de
   progreso — clickeable para saltar a un punto de la canción, coloreada
   con el mismo acento dinámico que el título.
+- **Playlist:** `playlist.js` gestiona la canción actual, hasta diez
+  canciones escuchadas y una cola de hasta veinte próximas. Al elegir
+  una pista para reproducir, la playlist pide canciones relacionadas a
+  `GET /api/related/:videoId`; el servidor consulta el "Up next" de
+  YouTube Music, excluye canciones que ya están en la playlist y, si no
+  alcanza, prueba una búsqueda por artista y título. Las relacionadas
+  se agregan a la cola automáticamente. Desde los resultados se puede
+  elegir **Reproducir a continuación**, que pone esa pista al principio
+  de la cola sin quitar las demás; desde la playlist se puede reproducir
+  una pista o quitarla del historial o de la cola.
+- **Navegación de playlist:** el botón anterior reinicia la pista si ya
+  pasaron más de diez segundos; al comienzo, retrocede al historial. El
+  botón siguiente y el fin de la pista avanzan por la cola. Si la cola
+  está vacía, intenta cargar relacionadas antes de detenerse. La ventana
+  de playlist se sincroniza con el backend mediante
+  `POST /api/playlist/window` para mantener precargadas las URLs y el
+  audio de la siguiente pista.
 - **Volumen:** `volumeControl.js` abre un control de nivel y silencio.
   `audioEngine.setVolume` aplica el valor; con el audio silenciado, las
   barras quedan en un mínimo.

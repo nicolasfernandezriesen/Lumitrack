@@ -89,14 +89,24 @@ export function createAudioEngine({ barCount, onError, onStateChange, onProgress
       onError?.("Error reproduciendo el stream de audio.");
     });
     audioEl.addEventListener("timeupdate", emitProgress);
+    audioEl.addEventListener("progress", emitProgress);
     audioEl.addEventListener("loadedmetadata", emitProgress);
+    audioEl.addEventListener("durationchange", emitProgress);
+    audioEl.addEventListener("seeking", emitProgress);
+    audioEl.addEventListener("seeked", emitProgress);
   }
 
   function emitProgress() {
     if (!audioEl || !Number.isFinite(audioEl.duration)) return;
+    let bufferedEnd = 0;
+    const buffered = audioEl.buffered;
+    for (let i = 0; i < buffered.length; i++) {
+      bufferedEnd = Math.max(bufferedEnd, buffered.end(i));
+    }
     onProgress?.({
       currentTime: audioEl.currentTime,
       duration: audioEl.duration,
+      bufferedEnd,
     });
   }
 

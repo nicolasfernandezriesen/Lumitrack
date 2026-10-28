@@ -9,6 +9,7 @@
 <link rel="stylesheet" href="styles/layout.css">
 <link rel="stylesheet" href="styles/player-controls.css">
 <link rel="stylesheet" href="styles/panel.css">
+<link rel="stylesheet" href="styles/playlist.css">
 <link rel="stylesheet" href="styles/components.css">
 <link rel="stylesheet" href="styles/updater-modal.css">
 </head>
@@ -18,9 +19,12 @@
   <div id="ambient"></div>
   <div id="grain"></div>
   <div id="bars-wrap"></div>
+</div>
 
+<section id="playback-dock" aria-label="Reproductor y playlist">
   <div id="now-playing">
-    <div id="cover-stack">
+    <div id="cover-stack" role="button" tabindex="0" aria-controls="playlist-panel"
+      aria-label="Mostrar playlist" aria-expanded="false">
       <img id="cover-prev" class="cover-peek cover-peek--prev" alt="" hidden>
       <img id="cover" alt="">
       <img id="cover-next" class="cover-peek cover-peek--next" alt="" hidden>
@@ -41,6 +45,7 @@
 
         <div id="progress-track">
           <div id="progress-track-hit">
+            <div id="progress-buffered"></div>
             <div id="progress-fill"></div>
           </div>
         </div>
@@ -62,19 +67,39 @@
       </div>
     </div>
   </div>
+  <div id="playlist-panel" aria-hidden="true">
+    <ol id="playlist-list" aria-label="Canciones siguientes"></ol>
+  </div>
+</section>
+<div id="panel-actions">
+  <button id="toggle-search" class="panel-action" type="button" title="Buscar canción"
+    aria-label="Buscar canción" aria-controls="panel" aria-expanded="false">
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="10.8" cy="10.8" r="6.2"></circle>
+      <path d="m15.4 15.4 4.1 4.1"></path>
+    </svg>
+  </button>
+  <button id="toggle-settings" class="panel-action" type="button" title="Configuración"
+    aria-label="Configuración" aria-controls="settings-panel" aria-expanded="false">
+    <span aria-hidden="true">⚙</span>
+  </button>
 </div>
 
-<button id="toggle-panel" title="Mostrar/ocultar panel">⚙</button>
-
-<div id="panel">
+<div id="panel" class="top-panel hidden" aria-hidden="true">
   <h2>BUSCAR CANCION</h2>
   <input id="search-input" type="text" placeholder="Buscar canción o artista…">
   <p id="search-status"></p>
   <div id="results-list"></div>
 </div>
 
+<div id="settings-panel" class="top-panel hidden" role="dialog"
+  aria-label="Configuración" aria-hidden="true">
+  <h2>Configuracion</h2>
+  <p>Aca ira la configuracion de la APP</p>
+</div>
+
 <div id="loading-indicator"><span class="spinner"></span><span>Cargando audio…</span></div>
-<div id="status">Beta V.0.4.1</div>
+<div id="status">Beta V.0.4.2</div>
 
 <script type="module" src="scripts/main.js"></script>
 </body>

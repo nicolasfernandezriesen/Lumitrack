@@ -18,7 +18,7 @@ router.get("/cached/:videoId/wait", async (req, res) => {
 
 /**
  * Declara la ventana de playlist al servidor:
- * - URLs: hasta 3 atrás + 3 adelante (+ actual)
+ * - URLs: hasta 2 atrás + 20 adelante (+ actual)
  * - Audio: historial + actual + prefetch de la siguiente
  */
 router.post("/playlist/window", (req, res) => {

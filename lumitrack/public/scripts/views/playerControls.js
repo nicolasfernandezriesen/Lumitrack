@@ -20,6 +20,7 @@ export function createPlayerControls({
   nextButtonEl,
   timeRemainingEl,
   progressTrackEl,
+  progressBufferedEl,
   progressFillEl,
   onPlayButtonClick,
   onPrevClick,
@@ -62,7 +63,7 @@ export function createPlayerControls({
     void canGoPrev;
   }
 
-  function setProgress({ currentTime, duration }) {
+  function setProgress({ currentTime, duration, bufferedEnd }) {
     if (!Number.isFinite(duration) || duration <= 0) return;
     knownDuration = duration;
 
@@ -70,12 +71,15 @@ export function createPlayerControls({
     timeRemainingEl.textContent = `${formatTime(duration)}/-${formatTime(remaining)}`;
 
     const pct = Math.min(100, Math.max(0, (currentTime / duration) * 100));
+    const bufferedPct = Math.min(100, Math.max(0, (bufferedEnd / duration) * 100));
+    progressBufferedEl.style.width = bufferedPct + "%";
     progressFillEl.style.width = pct + "%";
   }
 
   function resetProgress() {
     knownDuration = 0;
     timeRemainingEl.textContent = "0:00/-0:00";
+    progressBufferedEl.style.width = "0%";
     progressFillEl.style.width = "0%";
   }
 

@@ -1,10 +1,14 @@
 import { createAudioEngine, PlaybackState } from "./services/audioEngine.js";
-import { extractDominantColor, complementary } from "./services/colorExtractor.js";
+import {
+  extractDominantColor,
+  complementary,
+} from "./services/colorExtractor.js";
 import { createPlaylistController } from "./services/playlist.js";
 import { createMediaKeys } from "./services/mediaKeys.js";
 import { createVisualizer } from "./views/visualizer.js";
 import { createSearchPanel } from "./views/searchPanel.js";
 import { createNowPlaying } from "./views/nowPlaying.js";
+import { createPlaylistView } from "./views/playlistView.js";
 import { createPlayerControls } from "./views/playerControls.js";
 import { createVolumeControl } from "./views/volumeControl.js";
 import { createFullscreenToggle } from "./views/fullscreenToggle.js";
@@ -31,6 +35,19 @@ function syncDocumentTitle(state) {
 
 function main() {
   const playlist = createPlaylistController();
+  const playlistView = createPlaylistView({
+    containerEl: document.getElementById("playback-dock"),
+    panelEl: document.getElementById("playlist-panel"),
+    listEl: document.getElementById("playlist-list"),
+    toggleButtonEl: document.getElementById("cover-stack"),
+    onPlayTrack: (track) => {
+      void handleTrackSelected(track);
+    },
+    onRemove: (videoId) => playlist.removeTrack(videoId),
+  });
+  const coverStackEl = document.getElementById("cover-stack");
+  const coverEl = document.getElementById("cover");
+  const playlistListEl = document.getElementById("playlist-list");
 
   const visualizer = createVisualizer({
     barsWrapEl: document.getElementById("bars-wrap"),
@@ -38,7 +55,7 @@ function main() {
   });
 
   const nowPlaying = createNowPlaying({
-    coverEl: document.getElementById("cover"),
+    coverEl,
     coverPrevEl: document.getElementById("cover-prev"),
     coverNextEl: document.getElementById("cover-next"),
     coverStackEl: document.getElementById("cover-stack"),
@@ -53,6 +70,7 @@ function main() {
     nextButtonEl: document.getElementById("next-track"),
     timeRemainingEl: document.getElementById("time-remaining"),
     progressTrackEl: document.getElementById("progress-track"),
+    progressBufferedEl: document.getElementById("progress-buffered"),
     progressFillEl: document.getElementById("progress-fill"),
     onPlayButtonClick: handlePlayButtonClick,
     onPrevClick: () => {
@@ -66,15 +84,36 @@ function main() {
     },
   });
 
+  const settingsPanelEl = document.getElementById("settings-panel");
+  const settingsToggleBtnEl = document.getElementById("toggle-settings");
+  const searchPanelEl = document.getElementById("panel");
   const searchPanel = createSearchPanel({
-    panelEl: document.getElementById("panel"),
-    toggleBtnEl: document.getElementById("toggle-panel"),
+    panelEl: searchPanelEl,
+    toggleBtnEl: document.getElementById("toggle-search"),
     inputEl: document.getElementById("search-input"),
     statusEl: document.getElementById("search-status"),
     resultsListEl: document.getElementById("results-list"),
+    onOpenChange: (isOpen) => {
+      if (isOpen) {
+        settingsPanelEl.classList.add("hidden");
+        settingsPanelEl.setAttribute("aria-hidden", "true");
+        settingsToggleBtnEl.setAttribute("aria-expanded", "false");
+      }
+    },
     onTrackSelected: (track) => {
       void handleTrackSelected(track);
     },
+    onTrackPlayNext: (track) => {
+      void handleTrackPlayNext(track);
+    },
+  });
+
+  settingsToggleBtnEl.addEventListener("click", () => {
+    const isOpen = settingsPanelEl.classList.contains("hidden");
+    searchPanel.setOpen(false);
+    settingsPanelEl.classList.toggle("hidden", !isOpen);
+    settingsPanelEl.setAttribute("aria-hidden", String(!isOpen));
+    settingsToggleBtnEl.setAttribute("aria-expanded", String(isOpen));
   });
 
   const fullscreenToggle = createFullscreenToggle({
@@ -125,6 +164,7 @@ function main() {
 
   playlist.subscribe((snap) => {
     nowPlaying.setNeighbors({ previous: snap.previous, next: snap.next });
+    playlistView.setTracks({ history: snap.history, upcoming: snap.upcoming });
     playerControls.setNavAvailability({
       hasCurrent: !!snap.current,
       hasPrevious: snap.hasPrevious,
@@ -137,6 +177,72 @@ function main() {
     if (!dominant) return; // CORS u otro fallo: mantenemos la paleta actual
     visualizer.applyPalette(dominant, complementary(dominant));
   });
+
+  coverStackEl.addEventListener("click", () => {
+    const isOpen = document.body.classList.contains("playlist-open");
+    playlistView.setOpen(!isOpen);
+  });
+  coverStackEl.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    const isOpen = document.body.classList.contains("playlist-open");
+    playlistView.setOpen(!isOpen);
+  });
+
+  window.addEventListener(
+    "wheel",
+    (event) => {
+      if (event.target instanceof Node && searchPanelEl.contains(event.target)) {
+        return;
+      }
+      const isOpen = document.body.classList.contains("playlist-open");
+      const scrolledPlaylist =
+        event.target instanceof Node && playlistListEl.contains(event.target);
+      if (isOpen && event.deltaY < 0 && !scrolledPlaylist) {
+        playlistView.setOpen(false);
+      } else if (!isOpen && event.deltaY > 0) {
+        playlistView.setOpen(true);
+      }
+    },
+    { passive: true },
+  );
+
+  let touchStartY = null;
+  let touchStartTarget = null;
+  window.addEventListener(
+    "touchstart",
+    (event) => {
+      touchStartY = event.touches[0]?.clientY ?? null;
+      touchStartTarget = event.target;
+    },
+    { passive: true },
+  );
+  window.addEventListener(
+    "touchend",
+    (event) => {
+      if (touchStartY === null) return;
+      const touchEndY = event.changedTouches[0]?.clientY;
+      const isOpen = document.body.classList.contains("playlist-open");
+      const startedInPlaylist =
+        touchStartTarget instanceof Node &&
+        playlistListEl.contains(touchStartTarget);
+      const startedInSearchPanel =
+        touchStartTarget instanceof Node &&
+        searchPanelEl.contains(touchStartTarget);
+      if (
+        Number.isFinite(touchEndY) &&
+        !startedInPlaylist &&
+        !startedInSearchPanel &&
+        ((isOpen && touchEndY - touchStartY > 40) ||
+          (!isOpen && touchStartY - touchEndY > 40))
+      ) {
+        playlistView.setOpen(!isOpen);
+      }
+      touchStartY = null;
+      touchStartTarget = null;
+    },
+    { passive: true },
+  );
 
   async function playTrack(track) {
     if (!track?.videoId) return;
@@ -168,6 +274,23 @@ function main() {
     autoAdvanceToken += 1;
     await playlist.playFromSelection(track);
     await playTrack(track);
+  }
+
+  async function handleTrackPlayNext(track) {
+    const snapshot = playlist.snapshot();
+    if (!snapshot.current) {
+      await handleTrackSelected(track);
+      return;
+    }
+    if (snapshot.current.videoId === track.videoId) {
+      searchPanel.setStatus("Esta canción ya está sonando.");
+      return;
+    }
+
+    playlist.playNext(track);
+    searchPanel.setStatus(
+      `“${track.title || "La canción"}” se reproducirá a continuación.`,
+    );
   }
 
   async function handleTrackEnded() {

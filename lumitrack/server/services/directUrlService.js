@@ -34,7 +34,7 @@ export function prefetch(videoIds) {
 }
 
 /**
- * Actualiza la ventana de playlist (URLs: 3 atrás + 3 adelante + actual)
+ * Actualiza la ventana de playlist (URLs: 2 atrás + 20 adelante + actual)
  * y encola la resolución de las que falten.
  * Prioriza actual + siguiente (upcoming[0]) al frente de la cola.
  */

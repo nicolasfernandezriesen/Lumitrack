@@ -1,7 +1,7 @@
 import { fetchRelatedTracks, syncPlaylistWindow } from "./searchApi.js";
 
-const MAX_HISTORY = 3;
-const MAX_UPCOMING = 6;
+const MAX_HISTORY = 10;
+const MAX_UPCOMING = 20;
 const WINDOW_SYNC_DEBOUNCE_MS = 180;
 
 /**
@@ -59,8 +59,8 @@ export function createPlaylistController() {
     const token = ++syncToken;
     const payload = {
       current: current.videoId,
-      history: history.slice(0, 3).map((t) => t.videoId),
-      upcoming: upcoming.slice(0, 3).map((t) => t.videoId),
+      history: history.slice(0, 2).map((t) => t.videoId),
+      upcoming: upcoming.slice(0, 20).map((t) => t.videoId),
     };
     try {
       await syncPlaylistWindow(payload);
@@ -109,21 +109,80 @@ export function createPlaylistController() {
   async function playFromSelection(track) {
     if (!track?.videoId) return snapshot();
 
+    const historyIndex = history.findIndex(
+      (queued) => queued.videoId === track.videoId,
+    );
+    if (historyIndex >= 0) {
+      const newerHistory = history.slice(0, historyIndex).reverse();
+      history = history.slice(historyIndex + 1);
+      const queuedIds = new Set(newerHistory.map((queued) => queued.videoId));
+      upcoming = [
+        ...newerHistory,
+        ...upcoming.filter((queued) => !queuedIds.has(queued.videoId)),
+      ].slice(0, MAX_UPCOMING);
+      current = track;
+      refillToken += 1;
+      emit({ urgent: true });
+      await refillUpcoming(track);
+      return snapshot();
+    }
+
+    const upcomingIndex = upcoming.findIndex(
+      (queued) => queued.videoId === track.videoId,
+    );
+    const remainingUpcoming =
+      upcomingIndex >= 0
+        ? upcoming.filter((queued) => queued.videoId !== track.videoId)
+        : [];
+
     if (current && current.videoId !== track.videoId) {
-      history = [current, ...history.filter((t) => t.videoId !== current.videoId)].slice(0, MAX_HISTORY);
+      history = [
+        current,
+        ...history.filter((t) => t.videoId !== current.videoId),
+      ].slice(0, MAX_HISTORY);
     }
 
-    // Si el usuario eligió algo que ya estaba en la cola, recorta hasta ahí.
-    const idx = upcoming.findIndex((t) => t.videoId === track.videoId);
-    if (idx >= 0) {
-      upcoming = upcoming.slice(idx + 1);
-    } else {
-      upcoming = [];
-    }
-
+    upcoming = remainingUpcoming;
+    history = history.filter((queued) => queued.videoId !== track.videoId);
     current = track;
     emit({ urgent: true });
     await refillUpcoming(track);
+    return snapshot();
+  }
+
+  /** Coloca la pista elegida al principio de lo que queda por reproducir. */
+  function playNext(track) {
+    if (!track?.videoId) return snapshot();
+    if (!current) return playFromSelection(track);
+    if (current.videoId === track.videoId) return snapshot();
+
+    refillToken += 1;
+    upcoming = [
+      track,
+      ...upcoming.filter((queued) => queued.videoId !== track.videoId),
+    ].slice(0, MAX_UPCOMING);
+    emit({ urgent: true });
+    return snapshot();
+  }
+
+  function removeTrack(videoId) {
+    if (!videoId) return snapshot();
+    const remainingUpcoming = upcoming.filter(
+      (track) => track.videoId !== videoId,
+    );
+    const remainingHistory = history.filter(
+      (track) => track.videoId !== videoId,
+    );
+    if (
+      remainingUpcoming.length === upcoming.length &&
+      remainingHistory.length === history.length
+    ) {
+      return snapshot();
+    }
+    refillToken += 1;
+    upcoming = remainingUpcoming;
+    history = remainingHistory;
+    emit();
     return snapshot();
   }
 
@@ -143,14 +202,20 @@ export function createPlaylistController() {
       await refillUpcoming(current);
       const retry = upcoming.shift() || null;
       if (!retry) return null;
-      history = [current, ...history.filter((t) => t.videoId !== current.videoId)].slice(0, MAX_HISTORY);
+      history = [
+        current,
+        ...history.filter((t) => t.videoId !== current.videoId),
+      ].slice(0, MAX_HISTORY);
       current = retry;
       emit({ urgent: true });
       if (upcoming.length < 3) void refillUpcoming(current);
       return current;
     }
 
-    history = [current, ...history.filter((t) => t.videoId !== current.videoId)].slice(0, MAX_HISTORY);
+    history = [
+      current,
+      ...history.filter((t) => t.videoId !== current.videoId),
+    ].slice(0, MAX_HISTORY);
     current = next;
     emit({ urgent: true });
     if (upcoming.length < 3) void refillUpcoming(current);
@@ -161,7 +226,10 @@ export function createPlaylistController() {
   function goPrevious() {
     if (!history.length || !current) return null;
     const prev = history.shift();
-    upcoming = [current, ...upcoming.filter((t) => t.videoId !== current.videoId)].slice(0, MAX_UPCOMING);
+    upcoming = [
+      current,
+      ...upcoming.filter((t) => t.videoId !== current.videoId),
+    ].slice(0, MAX_UPCOMING);
     current = prev;
     emit({ urgent: true });
     return current;
@@ -174,6 +242,8 @@ export function createPlaylistController() {
 
   return {
     playFromSelection,
+    playNext,
+    removeTrack,
     goNext,
     goPrevious,
     peekNext,

@@ -71,6 +71,7 @@
 }
 
 #progress-track-hit {
+  position: relative;
   width: 100%;
   height: 4px;
   border-radius: 2px;
@@ -79,11 +80,22 @@
   pointer-events: none;
 }
 
+#progress-buffered,
 #progress-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
   height: 100%;
   width: 0%;
-  background: var(--fg);
   transition: width 120ms linear;
+}
+
+#progress-buffered {
+  background: var(--accent);
+}
+
+#progress-fill {
+  z-index: 1;
+  background: var(--fg);
 }
 
 #time-remaining {

@@ -68,7 +68,11 @@ export function streamAudio(videoId, req, res) {
 export function setPlaylistWindow(window) {
   directUrlService.setPlaylistWindow(window);
   const nextId = Array.isArray(window?.upcoming) ? window.upcoming[0] : null;
+  const previousNextId = audioCache.getNextId();
   prefetchTargetId = nextId && VIDEO_ID_RE.test(nextId) ? nextId : null;
+  if (previousNextId && previousNextId !== prefetchTargetId) {
+    cancelPrefetch(previousNextId);
+  }
   audioCache.markNext(prefetchTargetId);
   maybePrefetchNext();
 }
@@ -294,9 +298,19 @@ function maybePrefetchNext() {
   void prefetchAudio(nextId);
 }
 
+function cancelPrefetch(videoId) {
+  const pending = inflight.get(videoId);
+  if (pending?.role === "next") {
+    pending.abort();
+    if (inflight.get(videoId) === pending) inflight.delete(videoId);
+  }
+  assembling.delete(videoId);
+  audioCache.discardNext(videoId);
+}
+
 /** Descarga silenciosa a caché (sin respuesta HTTP al cliente). */
 async function prefetchAudio(videoId) {
-  if (inflight.has(videoId) || audioCache.has(videoId)) return;
+  if (prefetchTargetId !== videoId || inflight.has(videoId) || audioCache.has(videoId)) return;
 
   let entry = urlCache.get(videoId);
   if (!entry) {
@@ -306,6 +320,7 @@ async function prefetchAudio(videoId) {
       entry = null;
     }
   }
+  if (prefetchTargetId !== videoId || audioCache.has(videoId)) return;
 
   if (!entry) {
     await prefetchFromYtDlp(videoId);
@@ -367,7 +382,8 @@ async function prefetchFromDirect(videoId, entry) {
   const contentType = normalizeAudioContentType(upstream.headers.get("content-type")) || entry.contentType;
   const expectedLength = parseContentLength(upstream.headers.get("content-length"));
   const acc = createByteAccumulator(expectedLength || undefined);
-  assembling.set(videoId, { acc, expectedLength, contentType });
+  const assembly = { acc, expectedLength, contentType };
+  assembling.set(videoId, assembly);
 
   try {
     for await (const chunk of Readable.fromWeb(upstream.body)) {
@@ -384,7 +400,7 @@ async function prefetchFromDirect(videoId, entry) {
   }
 
   dropInflight();
-  assembling.delete(videoId);
+  if (assembling.get(videoId) === assembly) assembling.delete(videoId);
   if (acc.length > 0 && (prefetchTargetId === videoId || audioCache.getCurrentId() === videoId)) {
     const role = audioCache.getCurrentId() === videoId ? "current" : "next";
     audioCache.set(videoId, acc.take(), contentType, role);
@@ -411,7 +427,8 @@ function prefetchFromYtDlp(videoId) {
     });
 
     const acc = createByteAccumulator();
-    assembling.set(videoId, { acc, expectedLength: null, contentType: CONTENT_TYPE });
+    const assembly = { acc, expectedLength: null, contentType: CONTENT_TYPE };
+    assembling.set(videoId, assembly);
     let settle = null;
     const donePromise = new Promise((r) => {
       settle = r;
@@ -427,15 +444,16 @@ function prefetchFromYtDlp(videoId) {
 
     proc.stdout.on("data", (chunk) => acc.push(chunk));
     proc.on("error", () => {
-      inflight.delete(videoId);
-      assembling.delete(videoId);
+      const current = inflight.get(videoId);
+      if (current && current.promise === donePromise) inflight.delete(videoId);
+      if (assembling.get(videoId) === assembly) assembling.delete(videoId);
       settle?.(false);
       resolve(false);
     });
     proc.on("close", (code) => {
       const current = inflight.get(videoId);
       if (current && current.promise === donePromise) inflight.delete(videoId);
-      assembling.delete(videoId);
+      if (assembling.get(videoId) === assembly) assembling.delete(videoId);
 
       if (code === 0 && acc.length > 0 && (prefetchTargetId === videoId || audioCache.getCurrentId() === videoId)) {
         const role = audioCache.getCurrentId() === videoId ? "current" : "next";

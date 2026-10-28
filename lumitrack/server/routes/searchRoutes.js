@@ -24,7 +24,7 @@ router.get("/related/:videoId", async (req, res) => {
       .map((id) => id.trim())
       .filter(Boolean);
     const results = await getRelatedTracks(req.params.videoId, {
-      limit: 12,
+      limit: 20,
       excludeIds: exclude,
     });
     res.json({ results });

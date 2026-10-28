@@ -1,8 +1,9 @@
-// URLs directas del CDN para la ventana de playlist: 3 atrás + 3 adelante (+ actual).
+// URLs directas para las 2 canciones recientes, la actual y hasta 20 próximas.
 // Separada de la caché general de búsqueda para no mezclar prioridades.
 
-const MAX_NEIGHBORS = 6; // 3 atrás + 3 adelante
-const MAX_ENTRIES = MAX_NEIGHBORS + 1; // + canción actual
+const MAX_HISTORY = 2;
+const MAX_UPCOMING = 20;
+const MAX_ENTRIES = MAX_HISTORY + MAX_UPCOMING + 1; // + canción actual
 
 /** @type {Map<string, { url: string, contentType: string, expiresAt: number }>} */
 const entries = new Map();
@@ -46,14 +47,18 @@ export function clear() {
  * Define la ventana de playlist que debe mantenerse en caché de URLs.
  * @param {{ current?: string | null, history?: string[], upcoming?: string[] }} window
  */
-export function setWindow({ current = null, history = [], upcoming = [] } = {}) {
+export function setWindow({
+  current = null,
+  history = [],
+  upcoming = [],
+} = {}) {
   currentVideoId = current || null;
-  historyIds = unique(history).slice(0, 3);
-  upcomingIds = unique(upcoming).slice(0, 3);
+  historyIds = unique(history).slice(0, MAX_HISTORY);
+  upcomingIds = unique(upcoming).slice(0, MAX_UPCOMING);
   pruneToWindow();
 }
 
-/** Ids de la ventana actual (actual + hasta 3 atrás + hasta 3 adelante). */
+/** Ids de la ventana actual (actual + historial de audio + hasta 20 próximas). */
 export function windowIds() {
   const ids = [];
   if (currentVideoId) ids.push(currentVideoId);

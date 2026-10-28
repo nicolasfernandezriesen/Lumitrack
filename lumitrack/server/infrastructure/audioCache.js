@@ -3,7 +3,7 @@
 // - 1 canción actual
 // - 1 canción siguiente (prefetch en segundo plano)
 
-const MAX_HISTORY = 3;
+const MAX_HISTORY = 2;
 
 /** @type {Map<string, { buffer: Buffer, contentType: string }>} */
 const entries = new Map();
@@ -32,7 +32,11 @@ export function set(videoId, buffer, contentType, role = "current") {
   entries.set(videoId, { buffer, contentType });
 
   if (role === "next") {
-    if (nextVideoId && nextVideoId !== videoId && nextVideoId !== currentVideoId) {
+    if (
+      nextVideoId &&
+      nextVideoId !== videoId &&
+      nextVideoId !== currentVideoId
+    ) {
       // Solo reemplaza el slot de prefetch; no borra historial.
     }
     nextVideoId = videoId;
@@ -85,6 +89,14 @@ export function markNext(videoId) {
   prune();
 }
 
+/** Descarta una pista que dejó de ser la siguiente de la playlist. */
+export function discardNext(videoId) {
+  if (!videoId || nextVideoId !== videoId) return;
+  nextVideoId = null;
+  entries.delete(videoId);
+  prune();
+}
+
 /** Ids que deben permanecer en caché (actual + historial + next). */
 export function retainIds() {
   const ids = [];
@@ -110,7 +122,10 @@ export function size() {
 
 function rememberHistory(videoId) {
   if (!videoId) return;
-  historyIds = [videoId, ...historyIds.filter((id) => id !== videoId)].slice(0, MAX_HISTORY);
+  historyIds = [videoId, ...historyIds.filter((id) => id !== videoId)].slice(
+    0,
+    MAX_HISTORY,
+  );
 }
 
 function prune() {
