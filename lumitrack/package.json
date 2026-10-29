@@ -1,6 +1,6 @@
 {
   "name": "lumitrack",
-  "version": "0.4.2",
+  "version": "0.5.0",
   "description": "Visualizador de audio en barras de luz con búsqueda por YouTube. Uso personal, no comercial.",
   "author": "Lumitrack",
   "type": "module",
@@ -10,17 +10,20 @@
     "url": "https://github.com/nicolasfernandezriesen/Lumitrack.git"
   },
   "scripts": {
-    "start": "node start.js",
-    "desktop": "electron .",
+    "build:ui": "vite build",
+    "dev:ui": "vite",
+    "start": "npm run build:ui && node start.js",
+    "desktop": "npm run build:ui && electron .",
     "server": "node server/index.js",
     "dev": "node --watch server/index.js",
     "setup": "node setup.js",
-    "dist": "electron-builder --win nsis --config ../installer/electron-builder.yml --publish never",
-    "dist:publish": "electron-builder --win nsis --config ../installer/electron-builder.yml --publish always"
+    "dist": "npm run build:ui && electron-builder --win nsis --config ../installer/electron-builder.yml --publish never",
+    "dist:publish": "npm run build:ui && electron-builder --win nsis --config ../installer/electron-builder.yml --publish always"
   },
   "dependencies": {
     "electron-updater": "^6.8.9",
     "express": "^4.19.2",
+    "vue": "^3.5.22",
     "ytmusic-api": "^5.3.1"
   },
   "engines": {
@@ -28,7 +31,9 @@
   },
   "license": "MIT",
   "devDependencies": {
+    "@vitejs/plugin-vue": "^6.0.1",
     "electron": "^44.4.5",
-    "electron-builder": "^26.15.3"
+    "electron-builder": "^26.15.3",
+    "vite": "^8.3.5"
   }
 }

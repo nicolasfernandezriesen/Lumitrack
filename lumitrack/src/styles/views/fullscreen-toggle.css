@@ -1,0 +1,23 @@
+#fullscreen-toggle {
+  border: 0;
+  background: transparent;
+  color: var(--fg);
+  cursor: pointer;
+  font-size: 1.1rem;
+  line-height: 1;
+  padding: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+#fullscreen-toggle svg {
+  display: block;
+  fill: currentColor;
+}
+
+#fullscreen-toggle:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+}

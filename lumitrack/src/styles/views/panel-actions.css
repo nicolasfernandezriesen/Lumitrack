@@ -1,0 +1,48 @@
+#panel-actions {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 11;
+  display: flex;
+  gap: 8px;
+}
+
+.panel-action {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(18, 18, 22, 0.72);
+  backdrop-filter: blur(10px);
+  color: var(--fg);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.panel-action svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+#toggle-settings span {
+  font-size: 1rem;
+  transform: rotate(0deg);
+  transition: transform 0.3s ease;
+}
+
+#toggle-settings[aria-expanded="true"] span {
+  transform: rotate(90deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #toggle-settings span {
+    transition: none;
+  }
+}

@@ -1,0 +1,114 @@
+#now-playing {
+  --player-gap: 20px;
+  position: relative;
+  z-index: 3;
+  display: flex;
+  align-items: flex-end;
+  gap: var(--player-gap);
+  padding: clamp(20px, 4vw, 40px);
+  padding-bottom: clamp(28px, 5vh, 48px);
+  width: 100%;
+  pointer-events: auto;
+}
+
+#player-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+#cover-stack {
+  --cover-size: clamp(56px, 8vw, 88px);
+  --peek-ratio: 0.35;
+  position: relative;
+  width: var(--cover-size);
+  height: var(--cover-size);
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+#cover-stack:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+}
+
+#cover {
+  position: relative;
+  z-index: 2;
+  width: var(--cover-size);
+  height: var(--cover-size);
+  border-radius: 10px;
+  border: 2px solid var(--accent-2);
+  object-fit: cover;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+  background: #1a1a1e;
+  flex-shrink: 0;
+  display: block;
+}
+
+.cover-peek {
+  position: absolute;
+  left: 0;
+  width: var(--cover-size);
+  height: var(--cover-size);
+  border-radius: 10px;
+  object-fit: cover;
+  background: #121218;
+  opacity: 0.72;
+  z-index: 1;
+  pointer-events: none;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+
+.cover-peek--prev {
+  top: calc(var(--cover-size) * var(--peek-ratio) * -1);
+  clip-path: inset(0 0 calc((1 - var(--peek-ratio)) * 100%) 0);
+}
+
+.cover-peek--next {
+  bottom: calc(var(--cover-size) * var(--peek-ratio) * -1);
+  clip-path: inset(calc((1 - var(--peek-ratio)) * 100%) 0 0 0);
+}
+
+#cover-stack:not(.has-prev) .cover-peek--prev,
+#cover-stack:not(.has-next) .cover-peek--next {
+  display: none;
+}
+
+#meta {
+  min-width: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+#track-title {
+  font-size: clamp(1.1rem, 2.4vw, 1.6rem);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 0 0 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#track-artist {
+  font-size: clamp(0.85rem, 1.6vw, 1rem);
+  font-weight: 400;
+  color: var(--fg-dim);
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#controls-row {
+  display: flex;
+  align-items: center;
+  gap: var(--player-gap);
+  margin-top: 12px;
+  width: 100%;
+  min-width: 0;
+}

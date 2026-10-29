@@ -1,0 +1,115 @@
+#volume-control {
+  position: relative;
+  flex-shrink: 0;
+}
+
+#volume-toggle,
+#mute-toggle {
+  border: 0;
+  background: transparent;
+  color: var(--fg);
+  cursor: pointer;
+  font-size: 1.1rem;
+  line-height: 1;
+  padding: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#volume-toggle svg,
+#mute-toggle svg {
+  filter: none;
+}
+
+.vc-body {
+  fill: #fff;
+}
+
+.vc-waves {
+  stroke: var(--fg);
+}
+
+.vc-x {
+  stroke: #ff3b3b;
+}
+
+#volume-toggle:hover,
+#mute-toggle:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+}
+
+.volume-popover {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 10px);
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 8px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+  background: rgba(20, 20, 25, 0.94);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(12px);
+}
+
+.volume-popover[hidden] {
+  display: none;
+}
+
+#volume-slider {
+  width: 24px;
+  height: 110px;
+  accent-color: var(--accent);
+  writing-mode: vertical-lr;
+  direction: rtl;
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+}
+
+#volume-slider::-webkit-slider-runnable-track {
+  width: 4px;
+  height: 100%;
+  border-radius: 2px;
+  background: rgba(var(--glow), 0.28);
+}
+
+#volume-slider::-moz-range-track {
+  width: 4px;
+  height: 100%;
+  border-radius: 2px;
+  background: rgba(var(--glow), 0.28);
+}
+
+#volume-slider::-moz-range-progress {
+  width: 4px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+#volume-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-left: -5px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 6px rgba(var(--glow), 0.6);
+  cursor: pointer;
+}
+
+#volume-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 6px rgba(var(--glow), 0.6);
+  cursor: pointer;
+}

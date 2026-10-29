@@ -60,6 +60,10 @@ a `%APPDATA%\Lumitrack\bin`. Esa carpeta es la `userData` de Electron
 (AppData\Roaming\Lumitrack): binarios, caché de la ventana y, cuando
 existan, configuración y bases de datos locales. Program Files no se
 puede actualizar sin administrador, así que lo del usuario no va ahí.
+Al iniciar, Lumitrack también comprueba en GitHub si hay una versión más
+nueva de yt-dlp y actualiza el binario local automáticamente. Si no hay
+conexión o falla esa actualización, conserva el binario instalado y
+continúa con el arranque.
 
 Al desinstalar se borra `%APPDATA%\Lumitrack` completo. El desinstalador
 pregunta antes si mantener la información personal; el casillero viene
@@ -122,25 +126,16 @@ Lumitrack/
     │       ├── playlistUrlCache.js    URLs de la ventana de playlist
     │       └── audioCache.js          audio en RAM: actual, historial y siguiente
     │
-    └── public/
-        ├── index.html
-        ├── fonts/                     → Space Grotesk local
-        ├── styles/
-        └── scripts/
-            ├── main.js                → conecta services y views
-            ├── services/
-            │   ├── audioEngine.js
-            │   ├── colorExtractor.js
-            │   ├── playlist.js          historial, cola y canciones relacionadas
-            │   └── searchApi.js         cliente de búsqueda, playlist y streaming
-            └── views/
-                ├── visualizer.js
-                ├── searchPanel.js
-                ├── nowPlaying.js
-                ├── playerControls.js
-                ├── playlistView.js
-                ├── volumeControl.js
-                └── fullscreenToggle.js
+    ├── index.html                     → entry de Vite
+    ├── vite.config.js
+    ├── public/                        → estáticos de Vite (fonts/)
+    ├── dist/                          → build del front (servido por Express)
+    └── src/                           → frontend Vue 3
+        ├── main.js / App.vue
+        ├── composables/               → orquestación (playback, paneles UI)
+        ├── services/                  → audio, playlist, API, colores, media keys
+        ├── views/                     → componentes de interfaz
+        └── styles/                    → CSS global + un archivo por vista
 ```
 
 **Backend — flujo de una request:** `routes/` recibe el HTTP, llama a la
@@ -149,12 +144,21 @@ función correspondiente en `services/`, y esa función usa
 rutas no saben cómo se arma el comando de yt-dlp, y los services no saben
 nada de Express.
 
-- **Búsqueda:** `GET /api/search?q=texto` → busca en YouTube Music vía
+- **Búsqueda:** `GET /api/search?q=texto&filter=song` → busca en YouTube Music vía
   el paquete npm `ytmusic-api` (cliente Innertube no oficial, instalado
-  solo en `node_modules` del proyecto). Devuelve título, artista,
-  portada y duración de hasta 12 resultados. Al responder, el servidor
-  empieza a resolver en segundo plano las URLs directas de audio de los
-  resultados.
+  solo en `node_modules` del proyecto). `filter` acepta `song` (por defecto),
+  `artist`, `album`, `playlist` o `video` y devuelve hasta 12 resultados del
+  tipo solicitado. Para canciones y videos, al responder el servidor empieza
+  a resolver en segundo plano las URLs directas de audio de los resultados.
+- **Detalles de artistas, álbumes y playlists:** `GET /api/artist/:artistId`,
+  `GET /api/album/:albumId` y `GET /api/playlist/:playlistId` obtienen los
+  metadatos y canciones desde YouTube Music. Para artistas se usan las canciones
+  destacadas que entrega la librería (hasta diez); si la lista está vacía,
+  Lumitrack consulta el catálogo de canciones del artista y muestra hasta diez.
+  La respuesta de artista también inicia el prefetch de audio de esas canciones.
+  La API no proporciona biografía ni audiencia mensual. Para álbumes, la
+  librería no entrega una duración agregada; Lumitrack suma las duraciones
+  individuales y muestra el total solo si todas están disponibles.
 - **URLs de audio:** `directUrlService.js` resuelve las URLs del CDN
   mediante yt-dlp y limita a dos las resoluciones simultáneas. Las URLs
   vencen, así que la caché solo evita volver a resolverlas mientras
@@ -189,25 +193,38 @@ nada de Express.
   cargar el servidor, porque dentro del paquete de solo lectura no se
   puede ejecutar ni actualizar un binario.
 
-**Frontend — flujo de una interacción:** `main.js` es el único archivo
-que conoce tanto a `services/` como a `views/`; los conecta pero no
-contiene lógica propia. Los módulos de `services/` (`audioEngine.js`,
-`colorExtractor.js`, `searchApi.js`, `playlist.js`) no tocan el DOM. Los
-módulos de `views/` (`visualizer`, `searchPanel`, `nowPlaying`,
-`playerControls`, `playlistView`, `volumeControl`, `fullscreenToggle`)
-sí tocan el DOM, pero no hacen fetch ni usan Web Audio directamente —
-reciben datos ya procesados y los pintan.
+**Frontend — flujo de una interacción:** Vue 3 + Vite. `App.vue` y los
+composables (`usePlayback`, `useUiShell`) orquestan services y views.
+Los módulos de `services/` (`audioEngine.js`, `colorExtractor.js`,
+`searchApi.js`, `playlist.js`) no tocan el DOM de la UI. Las `views/`
+son componentes Vue con su CSS en `styles/views/`; reciben datos y
+emiten eventos. El build queda en `dist/` y Express lo sirve.
 
 - **Visualización:** `audioEngine.js` conecta el `<audio>` a un
   `AnalyserNode`, hace FFT del audio en tiempo real, y entrega niveles ya
-  mapeados a la cantidad de barras. `visualizer.js` solo los pinta.
+  mapeados a la cantidad de barras. `Visualizer.vue` los pinta por DOM
+  directo (sin pasar por el virtual DOM).
 - **Controles de reproducción:** `audioEngine.js` expone `play`,
   `pause`, `resume`, `replay` y `seek`, y notifica cambios de estado
   (`idle`/`playing`/`paused`/`ended`) y de progreso (tiempo actual /
-  duración). `playerControls.js` traduce eso a un único botón cuyo
+  duración). `PlayerControls.vue` traduce eso a un único botón cuyo
   ícono y tooltip cambian según el estado, más el timer y la barra de
   progreso — clickeable para saltar a un punto de la canción, coloreada
   con el mismo acento dinámico que el título.
+- **Filtros de búsqueda:** el filtro **Artista** reproduce con clic
+  izquierdo las canciones más populares disponibles del artista (hasta
+  diez); con clic derecho muestra **Ver detalle**, que abre un modal con
+  su imagen, nombre y canciones destacadas, reproducibles individualmente.
+  Los filtros **Álbum** y **Playlist** reproducen su contenido con clic
+  izquierdo y ofrecen **Ver detalle** con clic derecho. **Video** reproduce
+  el resultado seleccionado; las canciones y videos también ofrecen
+  **Reproducir a continuación** desde el menú contextual.
+- **Modales de detalle:** los detalles de artista, álbum y playlist cargan
+  los datos bajo demanda y muestran estados de carga, errores o una lista
+  vacía cuando corresponda. Al seleccionar una canción, se cierra el modal
+  y comienza la reproducción desde esa posición con las demás canciones
+  disponibles en la playlist. Se pueden cerrar con el botón, clic fuera del
+  contenido o la tecla Escape.
 - **Playlist:** `playlist.js` gestiona la canción actual, hasta diez
   canciones escuchadas y una cola de hasta veinte próximas. Al elegir
   una pista para reproducir, la playlist pide canciones relacionadas a
@@ -225,6 +242,10 @@ reciben datos ya procesados y los pintan.
   de playlist se sincroniza con el backend mediante
   `POST /api/playlist/window` para mantener precargadas las URLs y el
   audio de la siguiente pista.
+- **Reposición de playlist:** al avanzar a la siguiente canción o quitar
+  una de las próximas, solicita relacionadas para reponer la cola hasta
+  veinte. La reposición excluye la canción quitada para que no reaparezca
+  inmediatamente.
 - **Volumen:** `volumeControl.js` abre un control de nivel y silencio.
   `audioEngine.setVolume` aplica el valor; con el audio silenciado, las
   barras quedan en un mínimo.
@@ -247,18 +268,16 @@ reciben datos ya procesados y los pintan.
   borrá `%APPDATA%\Lumitrack\bin` y abrila de nuevo.
 - **La búsqueda no devuelve resultados o tarda mucho** → la búsqueda
   usa `ytmusic-api` (npm). Probá borrar `node_modules` y correr de
-  nuevo `Lumitrack.bat` / `npm start` para reinstalar deps. Si el
-  problema es el audio (no la búsqueda), actualizá yt-dlp borrando
-  `bin/` como arriba.
-- **El audio corta o no carga** → mismo motivo que arriba: actualizá
-  yt-dlp borrando `bin/yt-dlp.exe` (o `bin/yt-dlp` en Mac/Linux) y
-  corriendo la app de nuevo.
+  nuevo `Lumitrack.bat` / `npm start` para reinstalar deps.
+- **El audio corta o no carga** → al abrir, la app comprueba y actualiza
+  yt-dlp automáticamente si hay conexión a internet. Si persiste, cerrá
+  la app y borrá `bin/yt-dlp.exe` (o `bin/yt-dlp` en Mac/Linux) para que
+  se descargue una copia nueva al próximo arranque.
 - **Al hacer click en la barra de progreso la primera vez que suena una
   canción no salta bien (o tarda rato)** → la primera reproducción
   streaméa en vivo mientras cachea en RAM; apenas termina de bajar,
   el seek pasa a funcionar (y si clickeás antes, la app espera a que
-  termine el cacheo y entonces salta). Si nunca salta, borrá `bin/` y
-  actualizá yt-dlp.
+  termine el cacheo y entonces salta).
 
 ## Instalador
 

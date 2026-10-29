@@ -1,0 +1,254 @@
+import { fetchRelatedTracks, syncPlaylistWindow } from "./searchApi.js";
+
+const MAX_HISTORY = 10;
+const MAX_UPCOMING = 20;
+const WINDOW_SYNC_DEBOUNCE_MS = 180;
+
+/**
+ * Estado de playlist en el cliente: historial + cola de similares.
+ * Más adelante el ranking puede venir de SQLite; hoy usa /api/related.
+ */
+export function createPlaylistController() {
+  let current = null;
+  /** @type {object[]} */
+  let history = [];
+  /** @type {object[]} */
+  let upcoming = [];
+  let refillToken = 0;
+  let syncTimer = null;
+  let syncToken = 0;
+  /** @type {((snapshot: object) => void) | null} */
+  let onChange = null;
+
+  function snapshot() {
+    return {
+      current,
+      previous: history[0] || null,
+      next: upcoming[0] || null,
+      history: history.slice(),
+      upcoming: upcoming.slice(),
+      hasPrevious: history.length > 0,
+      hasNext: upcoming.length > 0,
+    };
+  }
+
+  /** @param {{ urgent?: boolean }} [opts] urgent = cambio de pista (prefetch inmediato). */
+  function emit({ urgent = false } = {}) {
+    onChange?.(snapshot());
+    if (urgent) {
+      if (syncTimer) {
+        clearTimeout(syncTimer);
+        syncTimer = null;
+      }
+      void pushWindow();
+      return;
+    }
+    schedulePushWindow();
+  }
+
+  function schedulePushWindow() {
+    if (syncTimer) clearTimeout(syncTimer);
+    syncTimer = setTimeout(() => {
+      syncTimer = null;
+      void pushWindow();
+    }, WINDOW_SYNC_DEBOUNCE_MS);
+  }
+
+  async function pushWindow() {
+    if (!current) return;
+    const token = ++syncToken;
+    const payload = {
+      current: current.videoId,
+      history: history.slice(0, 2).map((t) => t.videoId),
+      upcoming: upcoming.slice(0, 20).map((t) => t.videoId),
+    };
+    try {
+      await syncPlaylistWindow(payload);
+    } catch (err) {
+      if (token !== syncToken) return;
+      console.warn("No se pudo sincronizar la ventana de playlist:", err);
+    }
+  }
+
+  function excludeIds() {
+    const ids = [];
+    if (current) ids.push(current.videoId);
+    for (const t of history) ids.push(t.videoId);
+    for (const t of upcoming) ids.push(t.videoId);
+    return ids;
+  }
+
+  async function refillUpcoming(seedTrack) {
+    const token = ++refillToken;
+    const seed = seedTrack || current;
+    if (!seed?.videoId) return;
+
+    try {
+      const related = await fetchRelatedTracks(seed.videoId, excludeIds());
+      if (token !== refillToken) return;
+
+      const seen = new Set(excludeIds());
+      const additions = [];
+      for (const track of related) {
+        if (!track?.videoId || seen.has(track.videoId)) continue;
+        seen.add(track.videoId);
+        additions.push(track);
+        if (upcoming.length + additions.length >= MAX_UPCOMING) break;
+      }
+
+      if (additions.length) {
+        upcoming = [...upcoming, ...additions].slice(0, MAX_UPCOMING);
+        emit();
+      }
+    } catch (err) {
+      console.warn("No se pudieron cargar canciones relacionadas:", err);
+    }
+  }
+
+  /** Arranca (o reinicia) la playlist al elegir una canción desde la búsqueda. */
+  async function playFromSelection(track) {
+    if (!track?.videoId) return snapshot();
+
+    const historyIndex = history.findIndex(
+      (queued) => queued.videoId === track.videoId,
+    );
+    if (historyIndex >= 0) {
+      const newerHistory = history.slice(0, historyIndex).reverse();
+      history = history.slice(historyIndex + 1);
+      const queuedIds = new Set(newerHistory.map((queued) => queued.videoId));
+      upcoming = [
+        ...newerHistory,
+        ...upcoming.filter((queued) => !queuedIds.has(queued.videoId)),
+      ].slice(0, MAX_UPCOMING);
+      current = track;
+      refillToken += 1;
+      emit({ urgent: true });
+      await refillUpcoming(track);
+      return snapshot();
+    }
+
+    const upcomingIndex = upcoming.findIndex(
+      (queued) => queued.videoId === track.videoId,
+    );
+    const remainingUpcoming =
+      upcomingIndex >= 0
+        ? upcoming.filter((queued) => queued.videoId !== track.videoId)
+        : [];
+
+    if (current && current.videoId !== track.videoId) {
+      history = [
+        current,
+        ...history.filter((t) => t.videoId !== current.videoId),
+      ].slice(0, MAX_HISTORY);
+    }
+
+    upcoming = remainingUpcoming;
+    history = history.filter((queued) => queued.videoId !== track.videoId);
+    current = track;
+    emit({ urgent: true });
+    await refillUpcoming(track);
+    return snapshot();
+  }
+
+  /** Coloca la pista elegida al principio de lo que queda por reproducir. */
+  function playNext(track) {
+    if (!track?.videoId) return snapshot();
+    if (!current) return playFromSelection(track);
+    if (current.videoId === track.videoId) return snapshot();
+
+    refillToken += 1;
+    upcoming = [
+      track,
+      ...upcoming.filter((queued) => queued.videoId !== track.videoId),
+    ].slice(0, MAX_UPCOMING);
+    emit({ urgent: true });
+    return snapshot();
+  }
+
+  function removeTrack(videoId) {
+    if (!videoId) return snapshot();
+    const remainingUpcoming = upcoming.filter(
+      (track) => track.videoId !== videoId,
+    );
+    const remainingHistory = history.filter(
+      (track) => track.videoId !== videoId,
+    );
+    if (
+      remainingUpcoming.length === upcoming.length &&
+      remainingHistory.length === history.length
+    ) {
+      return snapshot();
+    }
+    refillToken += 1;
+    upcoming = remainingUpcoming;
+    history = remainingHistory;
+    emit();
+    return snapshot();
+  }
+
+  function peekNext() {
+    return upcoming[0] || null;
+  }
+
+  function peekPrevious() {
+    return history[0] || null;
+  }
+
+  /** Avanza a la siguiente; rellena la cola si hace falta. */
+  async function goNext() {
+    if (!current) return null;
+    const next = upcoming.shift() || null;
+    if (!next) {
+      await refillUpcoming(current);
+      const retry = upcoming.shift() || null;
+      if (!retry) return null;
+      history = [
+        current,
+        ...history.filter((t) => t.videoId !== current.videoId),
+      ].slice(0, MAX_HISTORY);
+      current = retry;
+      emit({ urgent: true });
+      if (upcoming.length < 3) void refillUpcoming(current);
+      return current;
+    }
+
+    history = [
+      current,
+      ...history.filter((t) => t.videoId !== current.videoId),
+    ].slice(0, MAX_HISTORY);
+    current = next;
+    emit({ urgent: true });
+    if (upcoming.length < 3) void refillUpcoming(current);
+    return current;
+  }
+
+  /** Retrocede a la canción anterior de la playlist, si hay. */
+  function goPrevious() {
+    if (!history.length || !current) return null;
+    const prev = history.shift();
+    upcoming = [
+      current,
+      ...upcoming.filter((t) => t.videoId !== current.videoId),
+    ].slice(0, MAX_UPCOMING);
+    current = prev;
+    emit({ urgent: true });
+    return current;
+  }
+
+  function subscribe(callback) {
+    onChange = callback;
+    callback(snapshot());
+  }
+
+  return {
+    playFromSelection,
+    playNext,
+    removeTrack,
+    goNext,
+    goPrevious,
+    peekNext,
+    peekPrevious,
+    snapshot,
+    subscribe,
+  };
+}

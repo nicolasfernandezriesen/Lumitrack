@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
+import YTMusic from "ytmusic-api";
 import * as audioCache from "../server/infrastructure/audioCache.js";
 import * as playlistUrlCache from "../server/infrastructure/playlistUrlCache.js";
-import { createPlaylistController } from "../public/scripts/services/playlist.js";
+import {
+  getArtistDetails,
+  getPlaylistDetails,
+  searchTracks,
+} from "../server/services/searchService.js";
+import { createPlaylistController } from "../src/services/playlist.js";
 
 function buf(label) {
   return Buffer.from(label);
@@ -9,6 +15,125 @@ function buf(label) {
 
 audioCache.clear();
 playlistUrlCache.clear();
+
+const originalInitialize = YTMusic.prototype.initialize;
+const originalGetPlaylist = YTMusic.prototype.getPlaylist;
+const originalGetPlaylistVideos = YTMusic.prototype.getPlaylistVideos;
+const originalSearchPlaylists = YTMusic.prototype.searchPlaylists;
+const originalGetArtist = YTMusic.prototype.getArtist;
+const originalGetArtistSongs = YTMusic.prototype.getArtistSongs;
+try {
+  YTMusic.prototype.initialize = async function initialize() {};
+  YTMusic.prototype.getPlaylist = async (playlistId) => ({
+    playlistId,
+    name: "Playlist de prueba",
+  });
+  YTMusic.prototype.getPlaylistVideos = async () =>
+    Array.from({ length: 62 }, (_, index) => ({
+      videoId: index === 61 ? "pl000000000" : `pl${String(index).padStart(9, "0")}`,
+      name: `Canción ${index + 1}`,
+      artist: { name: "Artista" },
+      duration: 180,
+    }));
+
+  YTMusic.prototype.searchPlaylists = async () => [
+    {
+      playlistId: "PLtestplaylist",
+      name: "Playlist de prueba",
+      artist: { name: "Creador de prueba" },
+      thumbnails: [
+        { url: "https://images.example/cover-small", width: 60, height: 60 },
+        { url: "https://images.example/cover-large", width: 544, height: 544 },
+      ],
+    },
+  ];
+
+  YTMusic.prototype.getArtist = async (artistId) => ({
+    artistId,
+    name: "Artista de prueba",
+    thumbnails: [
+      { url: "https://images.example/artist-small", width: 60, height: 60 },
+      { url: "https://images.example/artist-large", width: 544, height: 544 },
+    ],
+    topSongs: artistId === "UCemptytop"
+      ? []
+      : Array.from({ length: 12 }, (_, index) => ({
+      videoId: `ar${String(index).padStart(9, "0")}`,
+      name: `Éxito ${index + 1}`,
+      artist: { name: "Artista de prueba" },
+      album: { name: "Álbum de prueba" },
+      duration: 180,
+      })),
+  });
+  YTMusic.prototype.getArtistSongs = async () => [
+    {
+      videoId: "fb000000001",
+      name: "Canción alternativa",
+      artist: { name: "Artista de prueba" },
+      duration: 180,
+    },
+  ];
+
+  const searchResults = await searchTracks("prueba", 12, "playlist");
+  assert.equal(searchResults[0].creator, "Creador de prueba");
+  assert.equal(
+    searchResults[0].thumbnail,
+    "https://images.example/cover-large",
+    "usa la miniatura original de mayor resolución",
+  );
+  assert.deepEqual(searchResults[0].thumbnailCandidates, [
+    "https://images.example/cover-large",
+    "https://images.example/cover-small",
+  ]);
+
+  const artistDetails = await getArtistDetails("UCtestartist");
+  assert.equal(artistDetails.title, "Artista de prueba");
+  assert.equal(
+    artistDetails.thumbnail,
+    "https://images.example/artist-large",
+    "usa la miniatura original de mayor resolución",
+  );
+  assert.equal(artistDetails.tracks.length, 10, "limita éxitos a diez canciones");
+  assert.equal(artistDetails.tracks[0].title, "Éxito 1");
+  assert.equal(artistDetails.tracks[0].album, "Álbum de prueba");
+
+  const artistFallback = await getArtistDetails("UCemptytop");
+  assert.equal(artistFallback.tracks.length, 1);
+  assert.equal(
+    artistFallback.tracks[0].title,
+    "Canción alternativa",
+    "usa el catálogo de canciones del artista si no hay éxitos destacados",
+  );
+
+  const playlistDetails = await getPlaylistDetails(
+    "PLtestplaylist",
+    searchResults[0].creator,
+  );
+  assert.equal(playlistDetails.title, "Playlist de prueba");
+  assert.equal(playlistDetails.creator, "Creador de prueba");
+  assert.equal(
+    playlistDetails.tracks.length,
+    62,
+    "carga todas las canciones de la playlist",
+  );
+  assert.equal(
+    playlistDetails.tracks[0].videoId,
+    playlistDetails.tracks[61].videoId,
+    "preserva canciones repetidas dentro de la playlist",
+  );
+  assert.notEqual(
+    playlistDetails.tracks[0].playlistEntryId,
+    playlistDetails.tracks[61].playlistEntryId,
+    "identifica de forma única cada aparición de una canción",
+  );
+} finally {
+  YTMusic.prototype.initialize = originalInitialize;
+  YTMusic.prototype.getPlaylist = originalGetPlaylist;
+  YTMusic.prototype.getPlaylistVideos = originalGetPlaylistVideos;
+  YTMusic.prototype.searchPlaylists = originalSearchPlaylists;
+  YTMusic.prototype.getArtist = originalGetArtist;
+  YTMusic.prototype.getArtistSongs = originalGetArtistSongs;
+}
 
 // --- audioCache: historial + actual + next ---
 audioCache.markCurrent("aaa11111111");
@@ -189,9 +314,110 @@ for (let index = 0; index < 22; index += 1) {
 }
 assert.equal(
   longPlaylist.snapshot().upcoming.length,
-  20,
-  "conserva hasta veinte próximas",
+  22,
+  "conserva más de veinte próximas al agregar canciones manualmente",
 );
+
+const originalFetch = globalThis.fetch;
+const relatedCatalog = Array.from({ length: 60 }, (_, index) => ({
+  videoId: `rel${String(index).padStart(8, "0")}`,
+  title: `Relacionada ${index}`,
+}));
+globalThis.fetch = async (input) => {
+  const url = new URL(input, "http://localhost");
+  const excluded = new Set((url.searchParams.get("exclude") || "").split(","));
+  return {
+    ok: true,
+    json: async () => ({
+      results: relatedCatalog
+        .filter((track) => !excluded.has(track.videoId))
+        .slice(0, 20),
+    }),
+  };
+};
+
+const playlistTracks = Array.from({ length: 62 }, (_, index) => ({
+  videoId: `pl${String(index + 1).padStart(9, "0")}`,
+  title: `Canción de playlist ${index + 1}`,
+}));
+const fullPlaylist = createPlaylistController();
+await fullPlaylist.playPlaylist(playlistTracks, 3);
+assert.equal(
+  fullPlaylist.snapshot().current.videoId,
+  playlistTracks[3].videoId,
+  "inicia la playlist desde la canción seleccionada",
+);
+assert.deepEqual(
+  fullPlaylist.snapshot().upcoming.map((track) => track.videoId),
+  playlistTracks.slice(4).map((track) => track.videoId),
+  "mantiene todas las canciones restantes de una playlist de 62 canciones",
+);
+assert.equal((await fullPlaylist.goNext()).videoId, playlistTracks[4].videoId);
+assert.equal(
+  fullPlaylist.snapshot().upcoming.length,
+  57,
+  "no agrega canciones dinámicas mientras quedan canciones de la playlist",
+);
+
+const duplicateVideoId = "dup00000001";
+const duplicatePlaylist = createPlaylistController();
+await duplicatePlaylist.playPlaylist(
+  [
+    { videoId: duplicateVideoId, title: "Repetida 1" },
+    { videoId: "unique000001", title: "Única" },
+    { videoId: duplicateVideoId, title: "Repetida 2" },
+  ],
+  0,
+);
+const secondOccurrence = duplicatePlaylist.snapshot().upcoming[1];
+await duplicatePlaylist.playFromSelection(secondOccurrence);
+assert.equal(
+  duplicatePlaylist.snapshot().current.playlistEntryId,
+  secondOccurrence.playlistEntryId,
+  "permite seleccionar una aparición concreta de una canción repetida",
+);
+assert.deepEqual(
+  duplicatePlaylist.snapshot().upcoming.map((track) => track.title),
+  ["Única"],
+  "al seleccionar una aparición, conserva las demás pistas en cola",
+);
+
+const refillPlaylist = createPlaylistController();
+await refillPlaylist.playFromSelection({
+  videoId: "refill_cur1",
+  title: "Actual para rellenar",
+});
+assert.equal(
+  refillPlaylist.snapshot().upcoming.length,
+  20,
+  "la cola inicia con veinte relacionadas",
+);
+
+const firstRelated = refillPlaylist.peekNext();
+assert.equal((await refillPlaylist.goNext()).videoId, firstRelated.videoId);
+await new Promise((resolve) => setTimeout(resolve, 0));
+assert.equal(
+  refillPlaylist.snapshot().upcoming.length,
+  20,
+  "al avanzar, agrega una relacionada para mantener veinte próximas",
+);
+
+const removedRelated = refillPlaylist.snapshot().upcoming[5];
+refillPlaylist.removeTrack(removedRelated.videoId);
+await new Promise((resolve) => setTimeout(resolve, 0));
+assert.equal(
+  refillPlaylist.snapshot().upcoming.length,
+  20,
+  "al quitar una próxima, agrega una canción de reemplazo",
+);
+assert.equal(
+  refillPlaylist.snapshot().upcoming.some(
+    (track) => track.videoId === removedRelated.videoId,
+  ),
+  false,
+  "la canción quitada no se vuelve a agregar inmediatamente",
+);
+globalThis.fetch = originalFetch;
 
 // --- playlistUrlCache: actual + 2 de historial + 20 próximas ---
 const fake = (id) => ({

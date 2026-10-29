@@ -1,0 +1,21 @@
+#bars-wrap {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: clamp(1px, 0.25vw, 4px);
+  padding: 0 clamp(8px, 1.2vw, 18px) 0;
+}
+
+.bar {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 3px;
+  border-radius: 2px 2px 0 0;
+  background: linear-gradient(180deg, var(--accent-2) 0%, var(--accent) 55%, rgba(var(--glow), 0.25) 100%);
+  transform-origin: bottom;
+  transition: height 70ms linear;
+  box-shadow: 0 0 14px rgba(var(--glow), 0.35);
+}

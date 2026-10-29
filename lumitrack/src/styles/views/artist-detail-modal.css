@@ -1,0 +1,85 @@
+.artist-detail-modal {
+  width: min(760px, 100%);
+}
+
+.artist-detail-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 100px;
+  margin: 0 36px 22px;
+}
+
+.artist-detail-image {
+  width: 96px;
+  height: 96px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  object-fit: cover;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.artist-detail-header .artist-detail-label {
+  margin: 0 0 3px;
+  color: var(--fg-dim);
+  font-size: 0.78rem;
+}
+
+.artist-detail-header h2 {
+  margin: 0;
+  text-align: left;
+}
+
+.artist-detail-section-title {
+  margin: 0 0 10px;
+  font-size: 0.95rem;
+  font-weight: 650;
+}
+
+.artist-detail-track {
+  gap: 12px;
+}
+
+.artist-detail-track-image {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  border-radius: 5px;
+  object-fit: cover;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.artist-detail-track .playlist-item-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 2px;
+}
+
+.artist-detail-track .playlist-item-title,
+.artist-detail-track .playlist-item-artist {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.artist-detail-track .playlist-item-artist {
+  color: var(--fg-dim);
+  font-size: 0.75rem;
+}
+
+@media (max-width: 540px) {
+  .artist-detail-header {
+    gap: 12px;
+    margin: 0 32px 18px 0;
+  }
+
+  .artist-detail-image {
+    width: 72px;
+    height: 72px;
+  }
+
+  .artist-detail-track {
+    gap: 7px;
+  }
+}

@@ -20,27 +20,172 @@ function getClient() {
   return clientPromise;
 }
 
-/** Busca canciones y devuelve metadata normalizada para el frontend. */
-export async function searchTracks(query, maxResults = 12) {
+/** Busca un tipo de resultado y devuelve metadata normalizada para el frontend. */
+export async function searchTracks(query, maxResults = 12, filter = "song") {
   const q = (query || "").trim();
   if (!q) return [];
 
   const ytmusic = await getClient();
-  const songs = await ytmusic.searchSongs(q);
+  let matches;
+  switch (filter) {
+    case "artist":
+      matches = await ytmusic.searchArtists(q);
+      break;
+    case "album":
+      matches = await ytmusic.searchAlbums(q);
+      break;
+    case "playlist":
+      matches = await ytmusic.searchPlaylists(q);
+      break;
+    case "video":
+      matches = await ytmusic.searchVideos(q);
+      break;
+    case "song":
+      matches = await ytmusic.searchSongs(q);
+      break;
+    default:
+      throw new Error(`Filtro de búsqueda no soportado: ${filter}`);
+  }
 
   const seen = new Set();
   const results = [];
 
-  for (const song of songs) {
-    const track = normalizeSong(song);
-    if (!VIDEO_ID_RE.test(track.videoId)) continue;
-    if (seen.has(track.videoId)) continue;
-    seen.add(track.videoId);
-    results.push(track);
+  for (const match of matches) {
+    let result;
+    let identity;
+    if (filter === "artist") {
+      result = normalizeArtist(match);
+      identity = result.artistId;
+    } else if (filter === "album") {
+      result = normalizeAlbum(match);
+      identity = result.albumId;
+    } else if (filter === "playlist") {
+      result = normalizePlaylist(match);
+      identity = result.playlistId;
+    } else if (filter === "video") {
+      result = normalizeVideo(match);
+      identity = result.videoId;
+      if (!VIDEO_ID_RE.test(identity)) continue;
+    } else {
+      result = normalizeSong(match);
+      identity = result.videoId;
+      if (!VIDEO_ID_RE.test(identity)) continue;
+    }
+
+    if (identity && seen.has(identity)) continue;
+    if (identity) seen.add(identity);
+    results.push(result);
     if (results.length >= maxResults) break;
   }
 
   return results;
+}
+
+/** Devuelve una playlist completa con las pistas normalizadas para el cliente. */
+export async function getPlaylistDetails(playlistId, creatorFallback = "") {
+  const id = typeof playlistId === "string" ? playlistId.trim() : "";
+  if (!id) throw new Error("playlistId inválido");
+
+  const ytmusic = await getClient();
+  const [playlist, playlistVideos] = await Promise.all([
+    ytmusic.getPlaylist(id),
+    ytmusic.getPlaylistVideos(id),
+  ]);
+  if (!playlist) throw new Error("No se encontró la playlist.");
+
+  const sourceTracks = Array.isArray(playlistVideos)
+    ? playlistVideos
+    : Array.isArray(playlist.tracks)
+      ? playlist.tracks
+      : Array.isArray(playlist.songs)
+        ? playlist.songs
+        : [];
+  const tracks = [];
+
+  for (const [index, song] of sourceTracks.entries()) {
+    const track = normalizeSong(song);
+    if (!VIDEO_ID_RE.test(track.videoId)) continue;
+    track.playlistEntryId = `${index}:${track.videoId}`;
+    tracks.push(track);
+  }
+  const totalDuration = getTotalDuration(tracks);
+
+  const playlistCreator = pickPlaylistCreator(playlist);
+  return {
+    type: "playlist",
+    playlistId: playlist.playlistId || id,
+    title: playlist.name || "Sin título",
+    creator:
+      playlistCreator !== "Desconocido"
+        ? playlistCreator
+        : (typeof creatorFallback === "string" && creatorFallback.trim()) ||
+          "Desconocido",
+    totalDuration,
+    tracks,
+  };
+}
+
+/** Devuelve los datos del álbum, sus canciones y la duración si está completa. */
+export async function getAlbumDetails(albumId) {
+  const id = typeof albumId === "string" ? albumId.trim() : "";
+  if (!id) throw new Error("albumId inválido");
+
+  const ytmusic = await getClient();
+  const album = await ytmusic.getAlbum(id);
+  if (!album) throw new Error("No se encontró el álbum.");
+
+  const sourceTracks = Array.isArray(album.songs) ? album.songs : [];
+  const tracks = sourceTracks
+    .map(normalizeSong)
+    .filter((track) => VIDEO_ID_RE.test(track.videoId));
+  const hasCompleteDuration =
+    sourceTracks.length > 0 &&
+    sourceTracks.every(
+      (song) => Number.isFinite(song.duration) && song.duration >= 0,
+    );
+
+  return {
+    type: "album",
+    albumId: album.albumId || id,
+    title: album.name || "Sin título",
+    creator: pickArtist(album),
+    year: album.year || null,
+    totalDuration: hasCompleteDuration
+      ? sourceTracks.reduce((total, song) => total + song.duration, 0)
+      : null,
+    tracks,
+  };
+}
+
+/** Devuelve el perfil del artista y sus canciones más populares. */
+export async function getArtistDetails(artistId) {
+  const id = typeof artistId === "string" ? artistId.trim() : "";
+  if (!id) throw new Error("artistId inválido");
+
+  const ytmusic = await getClient();
+  const artist = await ytmusic.getArtist(id);
+  if (!artist) throw new Error("No se encontró el artista.");
+
+  const popularSongs = Array.isArray(artist.topSongs) ? artist.topSongs : [];
+  const sourceTracks = popularSongs.length
+    ? popularSongs
+    : await ytmusic.getArtistSongs(id);
+  const tracks = sourceTracks
+    .map((song) => ({
+      ...normalizeSong(song),
+      album: song.album?.name || "",
+    }))
+    .filter((track) => VIDEO_ID_RE.test(track.videoId))
+    .slice(0, 10);
+
+  return {
+    type: "artist",
+    artistId: artist.artistId || id,
+    title: artist.name || "Sin nombre",
+    thumbnail: pickBestThumbnail(artist),
+    thumbnailCandidates: pickThumbnailCandidates(artist),
+    tracks,
+  };
 }
 
 /**
@@ -100,6 +245,7 @@ export async function getRelatedTracks(videoId, { limit = 12, excludeIds = [] } 
 function normalizeSong(song) {
   const videoId = song.videoId || "";
   return {
+    type: "song",
     videoId,
     title: song.name || "Sin título",
     artist: pickArtist(song),
@@ -107,6 +253,82 @@ function normalizeSong(song) {
     publishedAt: null,
     duration: typeof song.duration === "number" ? song.duration : null,
   };
+}
+
+function getTotalDuration(tracks) {
+  if (
+    !tracks.length ||
+    tracks.some(
+      (track) => !Number.isFinite(track.duration) || track.duration < 0,
+    )
+  ) {
+    return null;
+  }
+  return tracks.reduce((total, track) => total + track.duration, 0);
+}
+
+function normalizeVideo(video) {
+  const videoId = video.videoId || "";
+  return {
+    type: "video",
+    videoId,
+    title: video.name || "Sin título",
+    artist: pickArtist(video),
+    thumbnail: pickBestThumbnail(video, videoId),
+    publishedAt: null,
+    duration: typeof video.duration === "number" ? video.duration : null,
+  };
+}
+
+function normalizeArtist(artist) {
+  return {
+    type: "artist",
+    artistId: artist.artistId || "",
+    title: artist.name || "Sin nombre",
+    subtitle: "Artista",
+    thumbnail: pickBestThumbnail(artist),
+  };
+}
+
+function normalizeAlbum(album) {
+  const artist = pickArtist(album);
+  const details = [artist, album.year].filter(Boolean).join(" • ");
+  return {
+    type: "album",
+    albumId: album.albumId || "",
+    playlistId: album.playlistId || "",
+    title: album.name || "Sin título",
+    artist,
+    year: album.year || null,
+    subtitle: details || "Álbum",
+    thumbnail: pickBestThumbnail(album),
+  };
+}
+
+function normalizePlaylist(playlist) {
+  const creator = pickPlaylistCreator(playlist);
+  return {
+    type: "playlist",
+    playlistId: playlist.playlistId || "",
+    title: playlist.name || "Sin título",
+    creator,
+    subtitle: creator === "Desconocido" ? "Playlist" : `Playlist • ${creator}`,
+    thumbnail: pickBestThumbnail(playlist),
+    thumbnailCandidates: pickThumbnailCandidates(playlist),
+  };
+}
+
+function pickPlaylistCreator(playlist) {
+  const artist = pickArtist(playlist);
+  if (artist !== "Desconocido") return artist;
+
+  for (const candidate of [playlist.author, playlist.owner]) {
+    if (typeof candidate === "string" && candidate.trim()) return candidate.trim();
+    if (typeof candidate?.name === "string" && candidate.name.trim()) {
+      return candidate.name.trim();
+    }
+  }
+  return "Desconocido";
 }
 
 function normalizeUpNext(item) {
@@ -160,19 +382,37 @@ function pickArtist(song) {
   return "Desconocido";
 }
 
-function pickBestThumbnail(song, videoId) {
+function pickBestThumbnail(song, videoId = "") {
   if (videoId) {
     return `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
   }
+  const candidates = pickThumbnailCandidates(song);
+  if (candidates.length) return candidates[0];
+  if (song.thumbnail) return normalizeImageUrl(song.thumbnail);
+  return "";
+}
+
+function pickThumbnailCandidates(song) {
   if (Array.isArray(song.thumbnails) && song.thumbnails.length) {
     const sorted = [...song.thumbnails].sort(
       (a, b) => (a.width || 0) - (b.width || 0)
     );
-    const pick = sorted[sorted.length - 1];
-    if (pick?.url) {
-      return pick.url.replace(/=w\d+-h\d+/i, "=w400-h400");
-    }
+    return [...new Set(sorted.reverse().map((thumbnail) => normalizeImageUrl(thumbnail?.url)).filter(Boolean))];
   }
-  if (song.thumbnail) return song.thumbnail;
-  return "";
+  const thumbnail = normalizeImageUrl(song.thumbnail);
+  return thumbnail ? [thumbnail] : [];
+}
+
+function normalizeImageUrl(url) {
+  if (typeof url !== "string" || !url.trim()) return "";
+  const value = url.trim();
+  if (value.startsWith("//")) return `https:${value}`;
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "https:" || parsed.protocol === "http:"
+      ? parsed.href
+      : "";
+  } catch {
+    return "";
+  }
 }

@@ -15,9 +15,9 @@ app.use(express.static(publicDir()));
 app.use("/api", searchRoutes);
 app.use("/api", streamRoutes);
 
-/** Carpeta public, también si electron-builder la desempaqueta fuera del asar. */
+/** Build de Vite (dist/), también si electron-builder la desempaqueta fuera del asar. */
 function publicDir() {
-  const bundled = path.join(__dirname, "..", "public");
+  const bundled = path.join(__dirname, "..", "dist");
   const marker = `app.asar${path.sep}`;
   const unpacked = bundled.includes(marker)
     ? bundled.replace(marker, `app.asar.unpacked${path.sep}`)
