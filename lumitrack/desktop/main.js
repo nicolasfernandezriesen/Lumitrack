@@ -52,7 +52,7 @@ async function boot() {
     splashApi.setStatus("Preparando Lumitrack");
     splashApi.setProgressStage(18);
 
-    const { runSetup } = await import("../setup.js");
+    const { runSetup, startBackgroundYtDlpUpdate } = await import("../setup.js");
     await runSetup({
       onStatus: (msg) => {
         splashApi.setStatus(msg);
@@ -84,6 +84,7 @@ async function boot() {
       mainWindow.show();
       // Tras mostrar la UI: evita competir con setup/server en el cold start.
       startBackgroundUpdateCheck();
+      startBackgroundYtDlpUpdate();
     });
     await mainWindow.loadURL(started.url);
   } catch (err) {

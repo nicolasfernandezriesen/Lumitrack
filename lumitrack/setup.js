@@ -198,14 +198,7 @@ async function updateYtDlp() {
 
 async function ensureYtDlp() {
   if (hasLocalYtDlp()) {
-    log("Buscando actualizaciones de yt-dlp…");
-    try {
-      await updateYtDlp();
-    } catch (error) {
-      log(
-        `No se pudo actualizar yt-dlp; se conservará la versión instalada: ${error.message}`,
-      );
-    }
+    log("yt-dlp listo.");
     return;
   }
   const url = YTDLP_URLS[process.platform];
@@ -219,6 +212,29 @@ async function ensureYtDlp() {
   await download(url, paths.ytDlp);
   if (!IS_WIN) chmodSync(paths.ytDlp, 0o755);
   log("yt-dlp listo.");
+}
+
+/**
+ * Chequea/actualiza yt-dlp sin bloquear el arranque.
+ * Solo aplica si ya hay un binario local (el setup se encarga de la 1ª descarga).
+ */
+export function startBackgroundYtDlpUpdate() {
+  if (!hasLocalYtDlp()) return;
+
+  void (async () => {
+    const previousNotify = notify;
+    notify = (msg) => console.log(`[setup] ${msg}`);
+    try {
+      log("Buscando actualizaciones de yt-dlp…");
+      await updateYtDlp();
+    } catch (error) {
+      log(
+        `No se pudo actualizar yt-dlp; se conservará la versión instalada: ${error.message}`,
+      );
+    } finally {
+      notify = previousNotify;
+    }
+  })();
 }
 
 async function ensureFfmpeg() {

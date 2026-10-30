@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { runSetup } from "./setup.js";
+import { runSetup, startBackgroundYtDlpUpdate } from "./setup.js";
 
 function openBrowser(url) {
   const platform = process.platform;
@@ -36,6 +36,9 @@ async function main() {
 
   const { startServer } = await import("./server/index.js");
   const { url } = await startServer();
+
+  // Tras levantar el server: no bloquea el arranque ni el browser.
+  startBackgroundYtDlpUpdate();
 
   console.log(`Abriendo ${url} en el navegador…`);
   openBrowser(url);
