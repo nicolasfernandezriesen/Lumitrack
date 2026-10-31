@@ -36,6 +36,7 @@ export function usePlayback({ getVisualizer }) {
   const progress = shallowRef({
     currentTime: 0,
     duration: 0,
+    bufferedStart: 0,
     bufferedEnd: 0,
   });
   const currentTrack = shallowRef(null);

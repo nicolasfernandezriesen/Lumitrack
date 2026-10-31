@@ -1,5 +1,11 @@
 import { Router } from "express";
-import { streamAudio, isCached, waitUntilCached, setPlaylistWindow } from "../services/streamService.js";
+import {
+  streamAudio,
+  isCached,
+  getCachedSection,
+  waitUntilCached,
+  setPlaylistWindow,
+} from "../services/streamService.js";
 
 const router = Router();
 
@@ -9,6 +15,11 @@ router.get("/stream/:videoId", (req, res) => {
 
 router.get("/cached/:videoId", (req, res) => {
   res.json({ cached: isCached(req.params.videoId) });
+});
+
+router.get("/cached/:videoId/section", (req, res) => {
+  const time = typeof req.query.time === "string" ? Number(req.query.time) : NaN;
+  res.json({ section: getCachedSection(req.params.videoId, time) });
 });
 
 router.get("/cached/:videoId/wait", async (req, res) => {

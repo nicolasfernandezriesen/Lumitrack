@@ -75,6 +75,13 @@
   display: flex;
   align-items: center;
   cursor: pointer;
+  touch-action: none;
+  user-select: none;
+}
+
+#progress-track:focus-visible {
+  outline: 2px solid var(--fg);
+  outline-offset: 3px;
 }
 
 #progress-track-hit {
@@ -105,10 +112,25 @@
   background: var(--fg);
 }
 
+#progress-track.is-dragging #progress-fill {
+  transition: none;
+}
+
 #time-remaining {
+  padding: 0;
+  border: 0;
+  background: transparent;
   color: var(--fg);
+  font: inherit;
   font-size: 0.78rem;
   font-variant-numeric: tabular-nums;
   flex-shrink: 0;
   line-height: 24px;
+  cursor: pointer;
+}
+
+#time-remaining:focus-visible {
+  outline: 2px solid var(--fg);
+  outline-offset: 3px;
+  border-radius: 2px;
 }

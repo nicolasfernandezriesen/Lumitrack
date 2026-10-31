@@ -29,6 +29,8 @@ export function createPlayerControls({
 }) {
   let state = PlaybackState.IDLE;
   let knownDuration = 0;
+  let currentTime = 0;
+  let isRemainingMode = false;
   let hasCurrentTrack = false;
   let canGoPrev = false;
   let canGoNext = false;
@@ -63,14 +65,13 @@ export function createPlayerControls({
     void canGoPrev;
   }
 
-  function setProgress({ currentTime, duration, bufferedEnd }) {
+  function setProgress({ currentTime: playbackTime, duration, bufferedEnd }) {
     if (!Number.isFinite(duration) || duration <= 0) return;
     knownDuration = duration;
+    currentTime = playbackTime;
+    updateTimeDisplay(currentTime);
 
-    const remaining = Math.max(0, duration - currentTime);
-    timeRemainingEl.textContent = `${formatTime(duration)}/-${formatTime(remaining)}`;
-
-    const pct = Math.min(100, Math.max(0, (currentTime / duration) * 100));
+    const pct = Math.min(100, Math.max(0, (playbackTime / duration) * 100));
     const bufferedPct = Math.min(100, Math.max(0, (bufferedEnd / duration) * 100));
     progressBufferedEl.style.width = bufferedPct + "%";
     progressFillEl.style.width = pct + "%";
@@ -78,17 +79,43 @@ export function createPlayerControls({
 
   function resetProgress() {
     knownDuration = 0;
-    timeRemainingEl.textContent = "0:00/-0:00";
+    currentTime = 0;
+    updateTimeDisplay(0);
     progressBufferedEl.style.width = "0%";
     progressFillEl.style.width = "0%";
   }
 
-  function formatTime(totalSeconds) {
+  function formatTime(totalSeconds, useHours = false) {
     const s = Math.floor(totalSeconds % 60)
       .toString()
       .padStart(2, "0");
-    const m = Math.floor(totalSeconds / 60);
-    return `${m}:${s}`;
+    const m = Math.floor((totalSeconds % 3600) / 60)
+      .toString()
+      .padStart(2, "0");
+    if (useHours) return `${Math.floor(totalSeconds / 3600)}:${m}:${s}`;
+    return `${Math.floor(totalSeconds / 60).toString().padStart(2, "0")}:${s}`;
+  }
+
+  function updateTimeDisplay(currentTime) {
+    const useHours = knownDuration >= 3600;
+    const safeCurrentTime = Math.min(knownDuration, Math.max(0, currentTime));
+    const value = isRemainingMode
+      ? `-${formatTime(knownDuration - safeCurrentTime, useHours)}`
+      : formatTime(safeCurrentTime, useHours);
+    timeRemainingEl.textContent = `${formatTime(knownDuration, useHours)}/${value}`;
+    timeRemainingEl.setAttribute(
+      "aria-label",
+      isRemainingMode ? "Mostrar tiempo transcurrido" : "Mostrar tiempo restante",
+    );
+    timeRemainingEl.title = isRemainingMode
+      ? "Mostrar tiempo transcurrido"
+      : "Mostrar tiempo restante";
+    timeRemainingEl.setAttribute("aria-pressed", String(isRemainingMode));
+  }
+
+  function toggleTimeMode() {
+    isRemainingMode = !isRemainingMode;
+    updateTimeDisplay(currentTime);
   }
 
   function handleTrackClick(event) {
@@ -102,6 +129,7 @@ export function createPlayerControls({
     playButtonEl.addEventListener("click", () => onPlayButtonClick(state));
     prevButtonEl?.addEventListener("click", () => onPrevClick?.());
     nextButtonEl?.addEventListener("click", () => onNextClick?.());
+    timeRemainingEl.addEventListener("click", toggleTimeMode);
     progressTrackEl.addEventListener("click", handleTrackClick);
     setState(PlaybackState.IDLE);
     resetProgress();

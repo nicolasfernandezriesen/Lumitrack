@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, onUnmounted, ref } from "vue";
+import { onMounted, onUnmounted, ref, watch } from "vue";
 import Visualizer from "./views/Visualizer.vue";
 import NowPlaying from "./views/NowPlaying.vue";
 import PlayerControls from "./views/PlayerControls.vue";
@@ -38,7 +38,12 @@ const artistDetail = ref(null);
 const artistDetailLoading = ref(false);
 const artistDetailError = ref("");
 const updaterApi = getUpdaterApi();
+const showFps = ref(false);
+const fps = ref(0);
 let playlistRequestSequence = 0;
+let fpsAnimationFrame = null;
+let fpsFrameCount = 0;
+let fpsSampleStartedAt = 0;
 
 const {
   searchOpen,
@@ -267,6 +272,29 @@ async function handlePlaylistPlayback(tracks, startIndex) {
   await playPlaylistTracks(tracks, startIndex);
 }
 
+function measureFps(now) {
+  fpsFrameCount += 1;
+  const elapsed = now - fpsSampleStartedAt;
+  if (elapsed >= 500) {
+    fps.value = Math.round((fpsFrameCount * 1000) / elapsed);
+    fpsFrameCount = 0;
+    fpsSampleStartedAt = now;
+  }
+  fpsAnimationFrame = window.requestAnimationFrame(measureFps);
+}
+
+watch(showFps, (enabled) => {
+  if (enabled) {
+    fpsFrameCount = 0;
+    fpsSampleStartedAt = performance.now();
+    fpsAnimationFrame = window.requestAnimationFrame(measureFps);
+  } else if (fpsAnimationFrame !== null) {
+    window.cancelAnimationFrame(fpsAnimationFrame);
+    fpsAnimationFrame = null;
+    fps.value = 0;
+  }
+});
+
 let touchStartY = null;
 let touchStartTarget = null;
 
@@ -338,6 +366,9 @@ onUnmounted(() => {
   window.removeEventListener("wheel", onWheel);
   window.removeEventListener("touchstart", onTouchStart);
   window.removeEventListener("touchend", onTouchEnd);
+  if (fpsAnimationFrame !== null) {
+    window.cancelAnimationFrame(fpsAnimationFrame);
+  }
 });
 </script>
 
@@ -434,8 +465,15 @@ onUnmounted(() => {
     @play-track="handleArtistDetailTrackSelected"
   />
 
-  <SettingsPanel :open="settingsOpen" />
+  <SettingsPanel
+    :open="settingsOpen"
+    :show-fps="showFps"
+    @toggle-fps="showFps = $event"
+  />
 
+  <div v-if="showFps" id="fps-counter" aria-label="Fotogramas por segundo">
+    FPS: {{ fps }}
+  </div>
   <div id="loading-indicator" :class="{ active: loading }">
     <span class="spinner"></span><span>Cargando audio…</span>
   </div>

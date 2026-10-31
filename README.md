@@ -1,7 +1,7 @@
 # Lumitrack
 
 Visualizador de audio con barras de luz audiorrítmicas e iluminación dinámica
-según la portada de la canción. Buscás un tema, se reproduce
+según la portada de la canción. Buscás un tema/artista/album/video/playlist, se reproduce
 solo el audio, y el fondo/las barras toman los colores de la
 portada.
 

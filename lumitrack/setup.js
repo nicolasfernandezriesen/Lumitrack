@@ -8,7 +8,7 @@ import {
   rmSync,
   statSync,
 } from "node:fs";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import https from "node:https";
@@ -155,19 +155,47 @@ function compareVersions(left, right) {
 }
 
 function installedYtDlpVersion() {
-  const result = spawnSync(paths.ytDlp, ["--version"], {
-    encoding: "utf8",
-    timeout: 10000,
-    windowsHide: true,
+  return new Promise((resolve) => {
+    let stdout = "";
+    let timedOut = false;
+    let settled = false;
+    let timeout;
+    const finish = (version) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      resolve(version);
+    };
+
+    const child = spawn(paths.ytDlp, ["--version"], {
+      windowsHide: true,
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => {
+      if (stdout.length < 256) stdout += chunk.slice(0, 256 - stdout.length);
+    });
+    child.once("error", () => finish(null));
+    child.once("close", (code) => {
+      if (timedOut || code !== 0) {
+        finish(null);
+        return;
+      }
+      const version = stdout.trim().split(/\s+/)[0];
+      finish(/^\d+(?:\.\d+)+$/.test(version) ? version : null);
+    });
+
+    timeout = setTimeout(() => {
+      timedOut = true;
+      child.kill();
+    }, 10000);
+    timeout.unref();
   });
-  if (result.error || result.status !== 0) return null;
-  const version = result.stdout.trim().split(/\s+/)[0];
-  return /^\d+(?:\.\d+)+$/.test(version) ? version : null;
 }
 
 async function updateYtDlp() {
   const latestVersion = await getLatestYtDlpVersion();
-  const currentVersion = installedYtDlpVersion();
+  const currentVersion = await installedYtDlpVersion();
   if (currentVersion && compareVersions(latestVersion, currentVersion) <= 0) {
     log(`yt-dlp está actualizado (${currentVersion}).`);
     return;

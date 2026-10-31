@@ -18,6 +18,8 @@ const USER_AGENT =
 const EARLY_PREFETCH_BYTES = 256 * 1024;
 const PARTIAL_WAIT_MS = 8_000;
 const PARTIAL_POLL_MS = 40;
+const MAX_SECTION_CACHE_BYTES = 64 * 1024 * 1024;
+const MAX_SECTION_CACHE_ENTRIES = 3;
 
 /** Descargas en curso: videoId → { promise, abort, role }. */
 const inflight = new Map();
@@ -27,6 +29,9 @@ const inflight = new Map();
  * @type {Map<string, { acc: ReturnType<typeof createByteAccumulator>, expectedLength: number | null, contentType: string }>}
  */
 const assembling = new Map();
+/** @type {Map<string, { start: number, end: number, buffer: Buffer }>} */
+const sectionCache = new Map();
+let sectionCacheBytes = 0;
 
 /** @type {string | null} */
 let prefetchTargetId = null;
@@ -39,6 +44,25 @@ export function streamAudio(videoId, req, res) {
   }
 
   audioCache.markCurrent(videoId);
+
+  if (req.query.start !== undefined || req.query.end !== undefined) {
+    const startValue = req.query.start;
+    const endValue = req.query.end;
+    const start = typeof startValue === "string" ? Number(startValue) : NaN;
+    const end = typeof endValue === "string" ? Number(endValue) : NaN;
+    if (
+      !Number.isFinite(start) ||
+      !Number.isFinite(end) ||
+      start < 0 ||
+      end <= start
+    ) {
+      res.status(400).json({ error: "Rango de seek inválido." });
+      return;
+    }
+
+    streamSection(videoId, start, end, res);
+    return;
+  }
 
   const cached = audioCache.get(videoId);
   if (cached) {
@@ -61,6 +85,134 @@ export function streamAudio(videoId, req, res) {
   streamAudioFresh(videoId, req, res);
 }
 
+/** Pide a yt-dlp/ffmpeg un stream nuevo que comienza en la posición solicitada. */
+function streamSection(videoId, start, end, res) {
+  const cachedSection = sectionCache.get(videoId);
+  if (cachedSection && cachedSection.start === start && cachedSection.end === end) {
+    sectionCache.delete(videoId);
+    sectionCache.set(videoId, cachedSection);
+    res.setHeader("Content-Type", CONTENT_TYPE);
+    res.setHeader("Cache-Control", "no-store");
+    res.setHeader("Content-Length", cachedSection.buffer.length);
+    res.end(cachedSection.buffer);
+    return;
+  }
+
+  const args = [
+    "-f",
+    AUDIO_FORMAT,
+    "--download-sections",
+    `*${start}-${end}`,
+    "--force-keyframes-at-cuts",
+    "-o",
+    "-",
+    "--no-playlist",
+    "--quiet",
+    "--no-warnings",
+  ];
+
+  if (hasLocalFfmpeg()) {
+    args.push("--ffmpeg-location", ffmpegDir());
+  }
+  args.push(watchUrl(videoId));
+
+  let proc;
+  try {
+    proc = spawn(ytDlpPath(), args, {
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+    });
+  } catch (err) {
+    console.error("No se pudo iniciar seek de audio:", err.message);
+    res.status(500).json({ error: "No se pudo iniciar el adelanto del audio." });
+    return;
+  }
+
+  let stderrBuf = "";
+  let acc = createByteAccumulator();
+  let cacheable = true;
+  let clientAborted = false;
+  proc.stderr.on("data", (chunk) => {
+    stderrBuf = (stderrBuf + chunk.toString()).slice(-2_000);
+  });
+
+  res.setHeader("Content-Type", CONTENT_TYPE);
+  res.setHeader("Cache-Control", "no-store");
+  proc.stdout.on("data", (chunk) => {
+    if (clientAborted) return;
+    if (cacheable) {
+      if (acc.length + chunk.length <= MAX_SECTION_CACHE_BYTES) {
+        acc.push(chunk);
+      } else {
+        acc = null;
+        cacheable = false;
+      }
+    }
+    // No pausar yt-dlp por la contrapresión del reproductor: continuar llenando la caché.
+    res.write(chunk);
+  });
+
+  proc.on("error", (err) => {
+    console.error("No se pudo iniciar yt-dlp para seek:", err.message);
+    if (!res.headersSent) {
+      res.status(500).json({
+        error: "No se pudo iniciar yt-dlp para adelantar el audio.",
+      });
+    } else if (!res.destroyed) {
+      res.destroy(err);
+    }
+  });
+
+  proc.on("close", (code) => {
+    if (clientAborted || res.destroyed || res.writableEnded) return;
+    if (code === 0) {
+      if (cacheable && acc.length > 0) {
+        cacheSection(videoId, start, end, acc.take());
+      }
+      if (!res.writableEnded) res.end();
+      return;
+    }
+
+    console.error("yt-dlp no pudo generar el segmento de audio:", stderrBuf.slice(-500));
+    if (!res.headersSent) {
+      res.status(502).json({
+        error: "No se pudo cargar el audio desde la posición solicitada.",
+        detail: stderrBuf.slice(-500),
+      });
+    } else {
+      res.destroy();
+    }
+  });
+
+  res.on("close", () => {
+    if (!res.writableEnded) {
+      clientAborted = true;
+      acc = null;
+      if (!proc.killed) proc.kill("SIGKILL");
+    }
+  });
+}
+
+function cacheSection(videoId, start, end, buffer) {
+  const previous = sectionCache.get(videoId);
+  if (previous) {
+    sectionCacheBytes -= previous.buffer.length;
+    sectionCache.delete(videoId);
+  }
+  while (
+    sectionCache.size > 0 &&
+    (sectionCache.size >= MAX_SECTION_CACHE_ENTRIES ||
+      sectionCacheBytes + buffer.length > MAX_SECTION_CACHE_BYTES)
+  ) {
+    const oldestId = sectionCache.keys().next().value;
+    sectionCacheBytes -= sectionCache.get(oldestId).buffer.length;
+    sectionCache.delete(oldestId);
+  }
+  if (buffer.length > MAX_SECTION_CACHE_BYTES) return;
+  sectionCache.set(videoId, { start, end, buffer });
+  sectionCacheBytes += buffer.length;
+}
+
 /**
  * Declara la ventana de playlist y la pista a prefetchar tras la actual.
  * @param {{ current?: string | null, history?: string[], upcoming?: string[] }} window
@@ -80,6 +232,16 @@ export function setPlaylistWindow(window) {
 /** Verdadero si el videoId ya está en la caché en RAM. */
 export function isCached(videoId) {
   return VIDEO_ID_RE.test(videoId) && audioCache.has(videoId);
+}
+
+/** Devuelve el segmento cacheado que cubre una posición absoluta de la pista. */
+export function getCachedSection(videoId, seconds) {
+  if (!VIDEO_ID_RE.test(videoId) || !Number.isFinite(seconds)) return null;
+  const section = sectionCache.get(videoId);
+  if (!section || seconds < section.start || seconds > section.end) return null;
+  sectionCache.delete(videoId);
+  sectionCache.set(videoId, section);
+  return { start: section.start, end: section.end };
 }
 
 /** Espera la caché en curso (inflight o assembling) y devuelve si quedó disponible. */

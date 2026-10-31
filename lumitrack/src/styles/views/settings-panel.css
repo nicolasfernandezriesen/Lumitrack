@@ -23,12 +23,134 @@
   font-size: 0.72rem;
   font-weight: 600;
   letter-spacing: 0.02em;
-  margin: 0 0 10px;
+  margin: 0 0 14px;
   color: var(--fg-dim);
 }
 
-#settings-panel p {
+#settings-panel .setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+#settings-panel .setting-copy {
+  min-width: 0;
+}
+
+#settings-panel .setting-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+#settings-panel .setting-label {
+  color: var(--fg);
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+
+#settings-panel .setting-help {
+  position: relative;
+  display: inline-flex;
+}
+
+#settings-panel .setting-help-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  padding: 0;
+  border: 1px solid var(--fg-dim);
+  border-radius: 50%;
+  background: transparent;
   color: var(--fg-dim);
+  font: inherit;
+  font-size: 0.62rem;
+  line-height: 1;
+  cursor: help;
+}
+
+#settings-panel .setting-help-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+#settings-panel .setting-tooltip {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 11;
+  width: 210px;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(18, 18, 22, 0.96);
+  color: var(--fg-dim);
+  font-size: 0.72rem;
+  font-weight: 400;
   line-height: 1.5;
-  margin: 0;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(-3px);
+  transition: opacity 0.15s ease, transform 0.15s ease, visibility 0.15s ease;
+}
+
+#settings-panel .setting-help:hover .setting-tooltip,
+#settings-panel .setting-help:focus-within .setting-tooltip {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+#settings-panel .setting-switch {
+  position: relative;
+  flex: 0 0 auto;
+  width: 38px;
+  height: 22px;
+  padding: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+#settings-panel .setting-switch.is-on {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+#settings-panel .setting-switch:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+#settings-panel .setting-switch-thumb {
+  display: block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  transform: translateX(0);
+  transition: transform 0.2s ease;
+}
+
+#settings-panel .setting-switch.is-on .setting-switch-thumb {
+  transform: translateX(16px);
+}
+
+#fps-counter {
+  position: fixed;
+  top: 16px;
+  left: 16px;
+  z-index: 9;
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 24px;
+  pointer-events: none;
 }

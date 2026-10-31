@@ -73,8 +73,14 @@ export async function syncPlaylistWindow({ current, history = [], upcoming = [] 
   return true;
 }
 
-export function streamUrl(videoId) {
-  return `/api/stream/${videoId}`;
+export function streamUrl(videoId, section) {
+  const params = new URLSearchParams();
+  if (section) {
+    params.set("start", String(section.start));
+    params.set("end", String(section.end));
+  }
+  const query = params.toString();
+  return `/api/stream/${videoId}${query ? `?${query}` : ""}`;
 }
 
 export async function isTrackCached(videoId) {
@@ -82,6 +88,18 @@ export async function isTrackCached(videoId) {
   if (!res.ok) return false;
   const data = await res.json();
   return !!data.cached;
+}
+
+export async function getCachedTrackSection(videoId, seconds) {
+  const params = new URLSearchParams({ time: String(seconds) });
+  const res = await fetch(
+    `/api/cached/${encodeURIComponent(videoId)}/section?${params}`,
+  );
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Error al consultar el buffer de audio");
+  }
+  return data.section;
 }
 
 /** Espera la caché del servidor mientras suena la descarga. */
