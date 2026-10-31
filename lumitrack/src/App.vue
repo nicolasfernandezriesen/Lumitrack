@@ -477,7 +477,7 @@ onUnmounted(() => {
   <div id="loading-indicator" :class="{ active: loading }">
     <span class="spinner"></span><span>Cargando audio…</span>
   </div>
-  <div id="status">Beta V.0.5.0</div>
+  <div id="status">Beta V.0.5.1</div>
 
   <UpdaterModal v-if="updaterApi" :api="updaterApi" />
 </template>

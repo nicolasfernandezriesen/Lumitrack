@@ -333,9 +333,9 @@ function maybeApplyMockUpdate() {
   if (process.env.LUMITRACK_MOCK_UPDATE !== "1") return;
   if (state.status === "available" || state.status === "downloaded") return;
   applyAvailableUpdate({
-    version: "0.5.0",
+    version: "0.5.1",
     releaseNotes: [
-      "<h2>Lumitrack v0.5.0</h2>",
+      "<h2>Lumitrack v0.5.1</h2>",
       "<p>Playlist con canciones relacionadas y controles anterior/siguiente.</p>",
       "<h3>Cambios</h3>",
       "<ul>",
